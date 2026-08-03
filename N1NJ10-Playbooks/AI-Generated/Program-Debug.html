@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Four Frames Deep — a line-by-line stack trace</title>
+<style>
+:root{
+  --bg:#0C1118; --bg2:#111925; --panel:#152030; --panel2:#1A2636;
+  --line:#243448; --line2:#2F435C;
+  --text:#DCE6F2; --dim:#8698AC; --dimmer:#5D7086;
+
+  /* one hue per stack frame */
+  --f-main:#F5A524;
+  --f-start:#35C2E8;
+  --f-second:#A78BFA;
+  --f-third:#34D399;
+  --f-crt:#64748B;
+
+  --read:#35C2E8;
+  --write:#F5A524;
+
+  --mono:ui-monospace,"SFMono-Regular","JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+code{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--f-start);outline-offset:2px;border-radius:3px}
+
+.wrap{max-width:1560px;margin:0 auto;padding:0 18px}
+
+/* ---------- header ---------- */
+header{padding:34px 0 22px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--dimmer);margin:0 0 10px}
+h1{font-family:var(--mono);font-weight:700;font-size:clamp(24px,4.2vw,40px);line-height:1.05;letter-spacing:-.03em;margin:0 0 12px}
+h1 em{font-style:normal;color:var(--f-main)}
+.sub{color:var(--dim);max-width:74ch;margin:0}
+.sub b{color:var(--text);font-weight:600}
+.sub a{color:var(--f-start)}
+
+/* ---------- control bar ---------- */
+.bar{
+  position:sticky;top:0;z-index:60;background:rgba(12,17,24,.94);backdrop-filter:blur(10px);
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:20px;
+}
+.bar-in{max-width:1560px;margin:0 auto;padding:11px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+button.ctl{
+  font-family:var(--mono);font-size:12.5px;font-weight:600;letter-spacing:.04em;
+  background:var(--panel);color:var(--text);border:1px solid var(--line2);border-radius:6px;
+  padding:7px 13px;cursor:pointer;transition:.14s;white-space:nowrap;
+}
+button.ctl:hover:not(:disabled){background:var(--panel2);border-color:var(--dim)}
+button.ctl:disabled{opacity:.32;cursor:not-allowed}
+button.ctl.go{background:var(--text);color:var(--bg);border-color:var(--text)}
+button.ctl.go:hover:not(:disabled){filter:brightness(.9);background:var(--text)}
+.stepno{font-family:var(--mono);font-size:12.5px;color:var(--dimmer);white-space:nowrap;font-variant-numeric:tabular-nums}
+.stepno b{color:var(--text)}
+input[type=range]{flex:1;min-width:160px;accent-color:var(--f-main);cursor:pointer}
+.infn{
+  font-family:var(--mono);font-size:12px;letter-spacing:.06em;padding:4px 10px;border-radius:20px;
+  border:1px solid currentColor;white-space:nowrap;
+}
+.kbd{font-family:var(--mono);font-size:11px;color:var(--dimmer);white-space:nowrap}
+.kbd b{color:var(--dim);border:1px solid var(--line2);border-radius:3px;padding:1px 5px;font-weight:500}
+
+/* ---------- layout ---------- */
+.cols{display:grid;grid-template-columns:308px 1fr 400px;gap:16px;padding:18px 0 40px;align-items:start}
+@media(max-width:1360px){.cols{grid-template-columns:290px 1fr}.col-r{grid-column:1/-1}}
+@media(max-width:900px){.cols{grid-template-columns:1fr}.col-r{grid-column:auto}}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.pane-h{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer);
+  padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;
+}
+.pane-h span{color:var(--dim);text-transform:none;letter-spacing:.04em}
+.scroll{overflow:auto;max-height:calc(100vh - 190px)}
+.scroll::-webkit-scrollbar{width:9px;height:9px}
+.scroll::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px}
+.scroll::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- asm listing ---------- */
+.asm{font-family:var(--mono);font-size:12px;line-height:1.5;padding:8px 0}
+.asm .fnh{
+  padding:12px 12px 5px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dimmer);display:flex;align-items:center;gap:7px;
+}
+.asm .fnh .dot{width:7px;height:7px;border-radius:2px;flex:none}
+.asm .sym{padding:1px 12px 1px 22px;color:var(--dimmer)}
+.asm .il{
+  padding:2px 12px 2px 22px;color:var(--dim);white-space:pre;position:relative;
+  border-left:2px solid transparent;
+}
+.asm .il .cm{color:var(--dimmer)}
+.asm .il.on{background:var(--panel2);color:var(--text);border-left-color:var(--f-main);font-weight:600}
+.asm .il.done{color:#69809A}
+.asm .dead{opacity:.34}
+.asm .badge{
+  font-size:9px;letter-spacing:.1em;border:1px solid var(--line2);color:var(--dimmer);
+  border-radius:3px;padding:1px 5px;margin-left:4px;
+}
+
+/* ---------- stack ---------- */
+.stack{font-family:var(--mono);font-size:12px}
+.srow{
+  display:grid;grid-template-columns:92px 6px 1fr 96px;align-items:center;gap:0;
+  border-bottom:1px solid rgba(36,52,72,.6);min-height:29px;position:relative;
+}
+.srow:last-child{border-bottom:none}
+.srow .addr{padding:5px 9px;color:var(--dimmer);font-size:11px;white-space:nowrap}
+.srow .band{align-self:stretch}
+.srow .body{padding:5px 12px;display:flex;align-items:center;gap:9px;min-width:0}
+.srow .val{font-weight:700;color:var(--text);white-space:nowrap}
+.srow .lbl{color:var(--dim);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .tag{
+  font-size:9.5px;letter-spacing:.06em;border-radius:3px;padding:1px 5px;border:1px solid currentColor;
+  white-space:nowrap;flex:none;
+}
+.srow .ptr{padding:5px 9px;text-align:right;font-size:11px;color:var(--dimmer);white-space:nowrap}
+.srow .ptr b{color:var(--f-main);font-weight:700}
+.srow.empty .body{color:var(--dimmer)}
+.srow.stale .val,.srow.stale .lbl{color:#4A5C70}
+.srow.rsp{background:rgba(245,165,36,.10)}
+.srow.rd{background:rgba(53,194,232,.13);box-shadow:inset 3px 0 0 var(--read)}
+.srow.wr{background:rgba(245,165,36,.15);box-shadow:inset 3px 0 0 var(--write)}
+.srow .hatch{
+  position:absolute;inset:0;left:98px;
+  background:repeating-linear-gradient(135deg,transparent 0 7px,rgba(93,112,134,.10) 7px 14px);
+  pointer-events:none;
+}
+.grow{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dimmer);
+  padding:8px 12px;background:var(--bg2);border-bottom:1px solid var(--line);
+}
+.grow.bot{border-bottom:none;border-top:1px solid var(--line)}
+#stackScroll{max-height:min(760px, calc(100vh - 150px))}
+
+/* ---------- CPU ---------- */
+.col-m{display:grid;gap:0}
+.cpu{border-color:var(--line2);box-shadow:0 0 0 1px rgba(53,194,232,.07),0 10px 30px -18px rgba(0,0,0,.9)}
+.cpu-sec{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dimmer);
+  padding:11px 14px 6px;border-top:1px solid var(--line);
+}
+.ip{
+  display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:12px;
+  padding:11px 14px;background:rgba(53,194,232,.05);border-bottom:1px solid var(--line);
+  font-family:var(--mono);font-size:12.5px;
+}
+.ip .k{font-size:10.5px;letter-spacing:.12em;color:var(--dimmer);text-transform:uppercase}
+.ip .a{color:var(--f-start);font-weight:700}
+.ip .d{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ip .d.idle{color:var(--dimmer);font-weight:400}
+
+.regs{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line)}
+@media(max-width:700px){.regs{grid-template-columns:repeat(2,1fr)}}
+.reg{background:var(--panel);padding:8px 12px;min-width:0}
+.reg .rn{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--dimmer);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reg .rv{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.reg .rv.nil{color:var(--dimmer);font-weight:400}
+.reg .rx{font-family:var(--mono);font-size:10px;color:var(--dimmer)}
+.reg.chg{background:rgba(245,165,36,.13)}
+.reg.chg .rv{color:var(--f-main)}
+.reg.dead .rv{color:#4A5C70}
+.align-ok{color:var(--f-third)}
+.align-mid{color:var(--f-main)}
+
+.alu{padding:10px 14px 13px}
+.alu.idle{font-family:var(--mono);font-size:12px;color:var(--dimmer);padding:11px 14px 14px}
+.alu-op{
+  display:grid;grid-template-columns:52px 1fr;gap:12px;align-items:center;
+  font-family:var(--mono);font-size:12.5px;
+}
+.alu-badge{
+  background:var(--f-third);color:var(--bg);font-weight:700;font-size:11px;letter-spacing:.08em;
+  text-align:center;padding:6px 0;border-radius:5px;
+}
+.alu-eq{color:var(--dim);white-space:pre-wrap;line-height:1.7}
+.alu-eq b{color:var(--text)}
+.alu-eq .res{color:var(--f-third);font-weight:700}
+.alu-note{font-family:var(--sans);font-size:12px;color:var(--dimmer);margin-top:9px;line-height:1.5}
+
+.flags{display:flex;gap:6px;flex-wrap:wrap;padding:2px 14px 14px}
+.flag{
+  font-family:var(--mono);font-size:11px;border:1px solid var(--line2);border-radius:5px;
+  padding:4px 9px;color:var(--dimmer);white-space:nowrap;
+}
+.flag b{font-weight:700}
+.flag.on{border-color:var(--f-third);color:var(--f-third);background:rgba(52,211,153,.09)}
+.flag.off{color:var(--dim)}
+.flag.unk{border-color:var(--f-main);color:var(--f-main);background:rgba(245,165,36,.08)}
+
+/* ---------- the bus between CPU and RAM ---------- */
+.bus{
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;
+  margin:0 34px;padding:9px 16px;
+  border-left:2px dashed var(--line2);border-right:2px dashed var(--line2);
+  font-family:var(--mono);font-size:12px;color:var(--dimmer);min-height:46px;
+}
+.bus .arrow{font-size:17px;line-height:1;font-weight:700}
+.bus .what{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bus .what b{color:var(--text);font-weight:700}
+.bus .sz{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.bus.load{border-color:var(--read);color:var(--read)}
+.bus.store,.bus.push{border-color:var(--write);color:var(--write)}
+.bus.pop{border-color:var(--read);color:var(--read)}
+.bus.none{border-style:dotted}
+
+/* ---------- right column ---------- */
+.col-r{display:grid;gap:16px}
+.expl{padding:16px 16px 18px}
+.expl .instr{
+  font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text);
+  background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:13px;
+  overflow-x:auto;white-space:pre;
+}
+.expl h3{font-family:var(--mono);font-size:13px;letter-spacing:.03em;margin:0 0 9px;color:var(--text)}
+.expl p{margin:0 0 10px;font-size:13.5px;color:var(--dim)}
+.expl p:last-child{margin-bottom:0}
+.expl b{color:var(--text);font-weight:600}
+.expl code{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12.5px;color:var(--text)}
+.expl .math{
+  font-family:var(--mono);font-size:12.5px;color:var(--dim);background:var(--bg2);
+  border:1px solid var(--line);border-left:2px solid var(--f-start);border-radius:0 6px 6px 0;
+  padding:9px 12px;margin:0 0 11px;white-space:pre-wrap;
+}
+.expl .math b{color:var(--f-start);font-weight:700}
+
+
+/* C source */
+.csrc{font-family:var(--mono);font-size:12px;line-height:1.6;padding:10px 0}
+.csrc .cl{display:grid;grid-template-columns:30px 1fr;color:var(--dim);white-space:pre}
+.csrc .cl .n{color:var(--dimmer);text-align:right;padding-right:10px;font-size:10.5px}
+.csrc .cl.on{background:var(--panel2);color:var(--text);font-weight:600}
+.csrc .cl.on .n{color:var(--f-main)}
+.csrc .cmt{color:var(--dimmer)}
+
+/* console */
+.term{
+  font-family:var(--mono);font-size:12.5px;padding:12px 14px;color:var(--f-third);
+  min-height:44px;white-space:pre-wrap;
+}
+.term .muted{color:var(--dimmer)}
+
+/* legend + footer notes */
+.legend{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
+.lg{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:4px 11px 4px 5px}
+.sw{width:11px;height:11px;border-radius:3px;flex:none}
+footer{border-top:1px solid var(--line);padding:26px 0 46px;color:var(--dimmer);font-family:var(--mono);font-size:11.5px}
+footer a{color:var(--f-start)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">MSVC x64 · /Od · line-by-line</p>
+  <h1>Four frames <em>deep</em>.</h1>
+  <p class="sub">One <b>step</b> = one instruction. The middle column is the machine: the <b>CPU</b> on top — instruction pointer, registers, ALU, flags — and <b>RAM</b> below it, where every slot is 8 bytes, high addresses at the top, and the stack grows <b>downward</b> as each <code>call</code> opens a frame. The strip between them is the <b>bus</b>: it shows whether this instruction moved anything between the two, and which direction. Most instructions never leave the chip. Companion to the <a href="cheatsheet.html">cheat sheet</a>.</p>
+</header>
+</div>
+
+<div class="bar">
+  <div class="bar-in">
+    <button class="ctl" id="btnReset" title="Reset">⟲ Reset</button>
+    <button class="ctl" id="btnPrev" title="Previous instruction">◀ Prev</button>
+    <button class="ctl go" id="btnNext" title="Next instruction">Step ▶</button>
+    <button class="ctl" id="btnPlay" title="Run automatically">▶ Auto</button>
+    <span class="stepno">step <b id="sn">0</b> / <span id="st">0</span></span>
+    <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Scrub through the trace">
+    <span class="infn" id="infn">main</span>
+    <span class="kbd"><b>←</b> <b>→</b> step · <b>space</b> auto</span>
+  </div>
+</div>
+
+<div class="wrap">
+<div class="cols">
+
+  <!-- ---------- assembly ---------- -->
+  <div class="pane">
+    <div class="pane-h">Assembly <span id="asmpos"></span></div>
+    <div class="scroll" id="asmScroll"><div class="asm" id="asm"></div></div>
+  </div>
+
+  <!-- ---------- the machine: CPU over bus over RAM ---------- -->
+  <div class="col-m">
+
+    <div class="pane cpu">
+      <div class="pane-h">CPU — on the chip <span id="cpuh"></span></div>
+
+      <div class="ip" id="ip"></div>
+
+      <div class="cpu-sec">General-purpose registers</div>
+      <div class="regs" id="regs"></div>
+
+      <div class="cpu-sec">Arithmetic logic unit</div>
+      <div class="alu" id="alu"></div>
+
+      <div class="cpu-sec">RFLAGS</div>
+      <div class="flags" id="flags"></div>
+    </div>
+
+    <div class="bus" id="bus"></div>
+
+    <div class="pane">
+      <div class="pane-h">RAM — the stack <span id="rspnow"></span></div>
+      <div class="grow">↑ higher addresses — older frames</div>
+      <div class="scroll" id="stackScroll"><div class="stack" id="stack"></div></div>
+      <div class="grow bot">↓ lower addresses — the stack grows this way</div>
+    </div>
+  </div>
+
+  <!-- ---------- right ---------- -->
+  <div class="col-r">
+    <div class="pane">
+      <div class="pane-h">What just happened</div>
+      <div class="expl" id="expl"></div>
+    </div>
+
+    <div class="pane">
+      <div class="pane-h">Console</div>
+      <div class="term" id="term"><span class="muted">nothing printed yet</span></div>
+    </div>
+
+    <div class="pane">
+      <div class="pane-h">C source</div>
+      <div class="csrc" id="csrc"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <span class="lg"><span class="sw" style="background:var(--f-crt)"></span>C runtime</span>
+  <span class="lg"><span class="sw" style="background:var(--f-main)"></span>main</span>
+  <span class="lg"><span class="sw" style="background:var(--f-start)"></span>start_addition</span>
+  <span class="lg"><span class="sw" style="background:var(--f-second)"></span>add_second</span>
+  <span class="lg"><span class="sw" style="background:var(--f-third)"></span>add_third</span>
+  <span class="lg"><span class="sw" style="background:rgba(53,194,232,.5)"></span>RAM → CPU (load / pop)</span>
+  <span class="lg"><span class="sw" style="background:rgba(245,165,36,.6)"></span>CPU → RAM (store / push)</span>
+</div>
+
+<footer>
+  Stack addresses are invented but internally consistent — only the offsets and the arithmetic matter.
+  <code>square</code> appears in the listing but nothing calls it: it is left over from an earlier version of the file and never executes.
+</footer>
+</div>
+
+<script>
+/* ============================================================
+   1. The listing
+   ============================================================ */
+var FUNCS = [
+  {fn:'square', color:'--f-crt', dead:true, badge:'never called',
+   syms:['num$ = 8'],
+   lines:[
+     {id:'sq1', n:4,t:'mov     DWORD PTR [rsp+8], ecx'},
+     {id:'sq2', n:4,t:'mov     eax, DWORD PTR num$[rsp]'},
+     {id:'sq3', n:5,t:'imul    eax, DWORD PTR num$[rsp]'},
+     {id:'sq4', n:1,t:'ret     0'}
+   ]},
+  {fn:'add_third', color:'--f-third',
+   syms:['current_total$ = 8','num3$ = 16'],
+   lines:[
+     {id:'t1', n:4,t:'mov     DWORD PTR [rsp+16], edx'},
+     {id:'t2', n:4,t:'mov     DWORD PTR [rsp+8], ecx'},
+     {id:'t3', n:4,t:'mov     eax, DWORD PTR num3$[rsp]'},
+     {id:'t4', n:4,t:'mov     ecx, DWORD PTR current_total$[rsp]'},
+     {id:'t5', n:2,t:'add     ecx, eax'},
+     {id:'t6', n:2,t:'mov     eax, ecx'},
+     {id:'t7', n:1,t:'ret     0'}
+   ]},
+  {fn:'add_second', color:'--f-second',
+   syms:['step1$ = 32','num1$ = 64','num2$ = 72','num3$ = 80'],
+   lines:[
+     {id:'s1', n:5,t:'mov     DWORD PTR [rsp+24], r8d'},
+     {id:'s2', n:4,t:'mov     DWORD PTR [rsp+16], edx'},
+     {id:'s3', n:4,t:'mov     DWORD PTR [rsp+8], ecx'},
+     {id:'s4', n:4,t:'sub     rsp, 56', c:'; 00000038H'},
+     {id:'s5', n:4,t:'mov     eax, DWORD PTR num2$[rsp]'},
+     {id:'s6', n:4,t:'mov     ecx, DWORD PTR num1$[rsp]'},
+     {id:'s7', n:2,t:'add     ecx, eax'},
+     {id:'s8', n:2,t:'mov     eax, ecx'},
+     {id:'s9', n:4,t:'mov     DWORD PTR step1$[rsp], eax'},
+     {id:'s10', n:4,t:'mov     edx, DWORD PTR num3$[rsp]'},
+     {id:'s11', n:4,t:'mov     ecx, DWORD PTR step1$[rsp]'},
+     {id:'s12', n:5,t:'call    add_third'},
+     {id:'s13', n:4,t:'add     rsp, 56', c:'; 00000038H'},
+     {id:'s14', n:1,t:'ret     0'}
+   ]},
+  {fn:'start_addition', color:'--f-start',
+   syms:['a$ = 48','b$ = 56','c$ = 64'],
+   lines:[
+     {id:'a1', n:5,t:'mov     DWORD PTR [rsp+24], r8d'},
+     {id:'a2', n:4,t:'mov     DWORD PTR [rsp+16], edx'},
+     {id:'a3', n:4,t:'mov     DWORD PTR [rsp+8], ecx'},
+     {id:'a4', n:4,t:'sub     rsp, 40', c:'; 00000028H'},
+     {id:'a5', n:5,t:'mov     r8d, DWORD PTR c$[rsp]'},
+     {id:'a6', n:4,t:'mov     edx, DWORD PTR b$[rsp]'},
+     {id:'a7', n:4,t:'mov     ecx, DWORD PTR a$[rsp]'},
+     {id:'a8', n:5,t:'call    add_second'},
+     {id:'a9', n:4,t:'add     rsp, 40', c:'; 00000028H'},
+     {id:'a10', n:1,t:'ret     0'}
+   ]},
+  {fn:'main', color:'--f-main',
+   syms:['result$ = 32'],
+   lines:[
+     {id:'m1', n:4,t:'sub     rsp, 56', c:'; 00000038H'},
+     {id:'m2', n:6,t:'mov     r8d, 30'},
+     {id:'m3', n:5,t:'mov     edx, 20'},
+     {id:'m4', n:5,t:'mov     ecx, 10'},
+     {id:'m5', n:5,t:'call    start_addition'},
+     {id:'m6', n:4,t:'mov     DWORD PTR result$[rsp], eax'},
+     {id:'m7', n:4,t:'mov     edx, DWORD PTR result$[rsp]'},
+     {id:'m8', n:7,t:'lea     rcx, OFFSET FLAT:$SG10217'},
+     {id:'m9', n:5,t:'call    printf'},
+     {id:'m10', n:2,t:'xor     eax, eax'},
+     {id:'m11', n:4,t:'add     rsp, 56', c:'; 00000038H'},
+     {id:'m12', n:1,t:'ret     0'}
+   ]}
+];
+
+var CSRC = [
+ '#include <stdio.h>','',
+ '// Function 3: The final addition',
+ 'int add_third(int current_total, int num3) {',
+ '    return current_total + num3;','}','',
+ '// Function 2: Adds the first two, then calls Function 3',
+ 'int add_second(int num1, int num2, int num3) {',
+ '    int step1 = num1 + num2;',
+ '    return add_third(step1, num3);','}','',
+ '// Function 1: The entry point for our math',
+ 'int start_addition(int a, int b, int c) {',
+ '    return add_second(a, b, c);','}','',
+ 'int main() {',
+ '    // The CPU starts here.',
+ '    int result = start_addition(10, 20, 30);',
+ '    printf("The final hacked calculation is: %d\\n", result);',
+ '    return 0;','}'
+];
+
+/* ============================================================
+   1b. Lay the code out in .text so every instruction has an address
+   ============================================================ */
+var TEXT_BASE = 0x140001000;
+var ADDR = {}, NEXT = {}, FNAT = [];
+(function layout(){
+  var pc = TEXT_BASE;
+  FUNCS.forEach(function(f){
+    pc = Math.ceil(pc / 16) * 16;          /* functions are 16-byte aligned */
+    f.at = pc;
+    FNAT.push(f);
+    f.lines.forEach(function(l){
+      ADDR[l.id] = pc;
+      pc += l.n;
+      NEXT[l.id] = pc;                      /* what a call pushes as the return address */
+    });
+    f.end = pc;
+  });
+})();
+function sym(a){
+  for (var i = 0; i < FNAT.length; i++){
+    var f = FNAT[i];
+    if (a >= f.at && a < f.end){
+      var d = a - f.at;
+      return f.fn + (d ? '+0x' + d.toString(16) : '');
+    }
+  }
+  return '?';
+}
+function code(a){ return '0x' + a.toString(16).toUpperCase(); }
+
+/* ============================================================
+   2. Machine state + helpers
+   ============================================================ */
+var HI = 0x14FF48, LO = 0x14FE70;
+var FMT_STR = 0x140003000;
+var CRT_RET = 0x1400012F4;
+
+function hex(n){ return '0x' + n.toString(16).toUpperCase().padStart(6,'0'); }
+
+function W(s,addr,v,label,user,kind){
+  s.mem[addr] = {v:v, label:label, user:user||null, kind:kind||'data'};
+  s.wr.push(addr);
+}
+function R(s,addr){ s.rd.push(addr); return s.mem[addr] ? s.mem[addr].v : null; }
+function push(s,v,label){ s.rsp -= 8; W(s,s.rsp,v,label,null,'ret'); }
+function pop(s){ var v = s.mem[s.rsp]; s.rd.push(s.rsp); s.rsp += 8; return v; }
+function enter(s,fn){ s.frames.push({fn:fn, ret:s.rsp, base:s.rsp}); }
+function leave(s){ s.frames.pop(); }
+function frameTop(s){ return s.frames[s.frames.length-1]; }
+
+/* ============================================================
+   3. The trace — one entry per executed instruction
+   ============================================================ */
+var T = [];
+function step(o){ T.push(o); }
+
+/* --- step 0: the state before main's first instruction --- */
+step({fn:'main', id:null, cline:19,
+  title:'Before the first instruction',
+  body:'The C runtime has already executed <code>call main</code>. That <code>call</code> pushed a return address, so <code>rsp</code> now points at it and the stack is <b>8 past</b> a 16-byte boundary — that is true on entry to every function.'+
+       '<p>Above the return address sit <b>32 bytes the runtime reserved for main</b>: the shadow space. main did not ask for it and does not need it here, but every caller on Windows must provide it.</p>',
+  math:'on entry:  rsp % 16 = <b>8</b>   (the return address is what broke the alignment)',
+  run:function(){}
+});
+
+/* ---------------- main opens ---------------- */
+step({fn:'main', id:'m1', cline:19, title:'main opens its frame',
+  alu:{op:'SUB', a:'rsp  0x14FF28', b:'56', r:'0x14FEF0', note:'the stack pointer is just a number the ALU decrements'},
+  body:'<code>sub rsp, 56</code> claims 56 bytes below the return address. Nothing is pushed — <code>rsp</code> just moves, and everything between the new <code>rsp</code> and the return address now belongs to main.',
+  math:'what the frame actually holds:\n  <b>32</b>  shadow space      rsp+0  … rsp+31\n  <b> 4</b>  int result        rsp+32 … rsp+35\n  <b>20</b>  unused            rsp+36 … rsp+55\n\nhow MSVC arrives at 56:\n  locals block  4 B  → rounded up to <b>16</b>\n  32 + 16 = 48\n  + <b>8</b> so that 56 % 16 = 8\n\nrsp % 16:  8 - 56 = <b>0</b>  ✓ realigned',
+  extra:'A frame size is <b>not</b> the sum of your variable sizes. <code>int result</code> is 4 bytes; the other 20 above the shadow space are never touched. MSVC rounds the locals block up to 16, then adds 8 because with no pushes the size must be ≡ 8 (mod 16). The same rule produces all three frames in this listing: <code>start_addition</code> has no locals → 32+0+8 = <b>40</b>; <code>add_second</code> and <code>main</code> each have one 4-byte local → 32+16+8 = <b>56</b>.',
+  run:function(s){ s.rsp -= 56; frameTop(s).base = s.rsp; s.flags={zf:0,sf:0,cf:0,of:0}; }
+});
+step({fn:'main', id:'m2', cline:21, title:'Third argument → r8',
+  body:'Windows x64 passes the first four integer arguments in <code>rcx</code>, <code>rdx</code>, <code>r8</code>, <code>r9</code>. This is <code>c = 30</code>.',
+  extra:'Writing <code>r8d</code> (the 32-bit name) automatically zeroes the upper 32 bits of <code>r8</code>. That is why the compiler never bothers with <code>mov r8, 30</code> for an <code>int</code>.',
+  run:function(s){ s.regs.r8 = 30; }
+});
+step({fn:'main', id:'m3', cline:21, title:'Second argument → rdx',
+  body:'<code>b = 20</code> into <code>edx</code>.', run:function(s){ s.regs.rdx = 20; }});
+step({fn:'main', id:'m4', cline:21, title:'First argument → rcx',
+  body:'<code>a = 10</code> into <code>ecx</code>. The arguments are loaded backwards — third, second, first — but order does not matter here since nothing reads them in between.',
+  run:function(s){ s.regs.rcx = 10; }});
+step({fn:'main', id:'m5', cline:21, title:'call start_addition',
+  body:'<code>call</code> does two things: it pushes the address of the <b>next</b> instruction, then jumps. <code>rsp</code> drops by 8.',
+  math:'the 32 bytes at ' + hex(0x14FEF0) + ' … ' + hex(0x14FF0F) + '\nwere reserved by main and are now the callee\'s <b>shadow space</b>',
+  extra:'This is the moment the alignment rule is checked: <code>rsp</code> was a multiple of 16 immediately before <code>call</code>, so the callee starts at %16 = 8 like everyone else.',
+  run:function(s){ push(s, code(NEXT['m5']), 'return address → ' + sym(NEXT['m5'])); enter(s,'start_addition'); }
+});
+
+/* ---------------- start_addition ---------------- */
+step({fn:'start_addition', id:'a1', cline:15, title:'Home the third parameter',
+  body:'This is <b>parameter homing</b>. The callee copies its register arguments into the shadow space the caller already reserved, so every parameter has a real memory address.',
+  math:'rsp + 24 = ' + hex(0x14FF00) + '   ← home slot 3',
+  extra:'It happens <b>before</b> <code>sub rsp</code> because <code>+8/+16/+24</code> are only correct while <code>rsp</code> still holds its entry value. Only 4 bytes are written into the 8-byte slot; the upper half stays whatever garbage was there.',
+  run:function(s){ W(s,0x14FF00,30,'c = 30 · home slot 3','start_addition'); }
+});
+step({fn:'start_addition', id:'a2', cline:15, title:'Home the second parameter',
+  body:'<code>b = 20</code> from <code>edx</code> into home slot 2.',
+  math:'rsp + 16 = ' + hex(0x14FEF8),
+  run:function(s){ W(s,0x14FEF8,20,'b = 20 · home slot 2','start_addition'); }
+});
+step({fn:'start_addition', id:'a3', cline:15, title:'Home the first parameter',
+  body:'<code>a = 10</code> from <code>ecx</code> into home slot 1. All three parameters now live in memory that <b>main</b> allocated but <b>start_addition</b> owns.',
+  math:'rsp +  8 = ' + hex(0x14FEF0),
+  run:function(s){ W(s,0x14FEF0,10,'a = 10 · home slot 1','start_addition'); }
+});
+step({fn:'start_addition', id:'a4', cline:15, title:'Open the frame',
+  alu:{op:'SUB', a:'rsp  0x14FEE8', b:'40', r:'0x14FEC0', note:'40 bytes claimed'},
+  body:'Only now does <code>rsp</code> move. Note what this does to every offset: the homes that were at <code>+8/+16/+24</code> are now at <code>+48/+56/+64</code>.',
+  math:'no locals at all, so the locals block is <b>0</b>:\n  32 + 0 = 32\n  + <b>8</b> so that 40 % 16 = 8\n\na$ = 48  →  48 - 40 = <b>8</b>   the same slot as before\nb$ = 56  →  56 - 40 = <b>16</b>\nc$ = 64  →  64 - 40 = <b>24</b>',
+  extra:'That is the whole trick behind the <code>name$</code> numbers: MASM measures them from <b>rsp after the sub</b>. Subtract the frame size and you are back to the entry-relative offset.',
+  run:function(s){ s.rsp -= 40; frameTop(s).base = s.rsp; s.flags={zf:0,sf:0,cf:0,of:0}; }
+});
+step({fn:'start_addition', id:'a5', cline:16, title:'Read c back out of memory',
+  body:'<code>c$[rsp]</code> means <code>[rsp + 64]</code>, which is the slot homed three instructions ago. The value goes right back into <code>r8d</code> — where it already was.',
+  extra:'Pointless? At <code>/Od</code>, yes. The debug compiler treats memory as the single source of truth for every variable so the debugger can show it. An optimised build deletes this whole function.',
+  run:function(s){ s.regs.r8 = R(s,0x14FF00); }
+});
+step({fn:'start_addition', id:'a6', cline:16, title:'Read b back out of memory',
+  body:'<code>b$[rsp]</code> = <code>[rsp + 56]</code> → <code>edx</code>.',
+  run:function(s){ s.regs.rdx = R(s,0x14FEF8); }
+});
+step({fn:'start_addition', id:'a7', cline:16, title:'Read a back out of memory',
+  body:'<code>a$[rsp]</code> = <code>[rsp + 48]</code> → <code>ecx</code>. The three arguments are staged in exactly the registers the next call needs.',
+  run:function(s){ s.regs.rcx = R(s,0x14FEF0); }
+});
+step({fn:'start_addition', id:'a8', cline:16, title:'call add_second',
+  body:'Another return address pushed, another frame about to open. The stack is now three deep: main → start_addition → add_second.',
+  math:'shadow space for add_second = ' + hex(0x14FEC0) + ' … ' + hex(0x14FEDF) + '\n(the low 32 bytes of start_addition\'s 40-byte frame)',
+  run:function(s){ push(s, code(NEXT['a8']), 'return address → ' + sym(NEXT['a8'])); enter(s,'add_second'); }
+});
+
+/* ---------------- add_second ---------------- */
+step({fn:'add_second', id:'s1', cline:9, title:'Home num3',
+  body:'Same three-instruction homing prologue, one level deeper.',
+  math:'rsp + 24 = ' + hex(0x14FED0),
+  run:function(s){ W(s,0x14FED0,30,'num3 = 30 · home slot 3','add_second'); }});
+step({fn:'add_second', id:'s2', cline:9, title:'Home num2',
+  math:'rsp + 16 = ' + hex(0x14FEC8),
+  body:'<code>num2 = 20</code> into home slot 2.',
+  run:function(s){ W(s,0x14FEC8,20,'num2 = 20 · home slot 2','add_second'); }});
+step({fn:'add_second', id:'s3', cline:9, title:'Home num1',
+  math:'rsp +  8 = ' + hex(0x14FEC0),
+  body:'<code>num1 = 10</code> into home slot 1.',
+  run:function(s){ W(s,0x14FEC0,10,'num1 = 10 · home slot 1','add_second'); }});
+step({fn:'add_second', id:'s4', cline:9, title:'Open the frame — this one has a local',
+  alu:{op:'SUB', a:'rsp  0x14FEB8', b:'56', r:'0x14FE80', note:'56 bytes claimed'},
+  body:'This is the function from your question. 56 bytes, and unlike the others it contains a genuine local variable.',
+  math:'  <b>32</b>  shadow space      rsp+0  … rsp+31\n  <b> 4</b>  int step1         rsp+32 … rsp+35\n  <b>20</b>  unused            rsp+36 … rsp+55\n\nsame rule as main: locals 4 B → 16, +32 shadow, +8 parity\n\nstep1$ = 32  →  32 - 56 = <b>-24</b>  below the old rsp → a LOCAL\nnum1$  = 64  →  64 - 56 = <b>  8</b>  above it → a PARAMETER\nnum2$  = 72  →  <b> 16</b>\nnum3$  = 80  →  <b> 24</b>',
+  extra:'That is the rule for reading any MASM listing: a symbol <b>smaller</b> than the frame size is a local, a symbol <b>larger</b> than it is a homed parameter sitting in the caller\'s frame.',
+  run:function(s){ s.rsp -= 56; frameTop(s).base = s.rsp; s.flags={zf:0,sf:0,cf:0,of:0}; }
+});
+step({fn:'add_second', id:'s5', cline:10, title:'Load num2',
+  body:'<code>num2$[rsp]</code> = <code>[rsp + 72]</code> = ' + hex(0x14FEC8) + ' — the slot homed four instructions ago.',
+  run:function(s){ s.regs.rax = R(s,0x14FEC8); }});
+step({fn:'add_second', id:'s6', cline:10, title:'Load num1',
+  body:'<code>num1$[rsp]</code> = <code>[rsp + 64]</code> = ' + hex(0x14FEC0) + '.',
+  run:function(s){ s.regs.rcx = R(s,0x14FEC0); }});
+step({fn:'add_second', id:'s7', cline:10, title:'The first actual arithmetic',
+  alu:{op:'ADD', a:'ecx  10', b:'eax  20', r:'ecx  30', note:'num1 + num2 — the first real computation in the program'},
+  body:'<code>add ecx, eax</code> → <code>10 + 20 = 30</code>. Everything up to here has been bookkeeping; this is the first instruction that computes anything.',
+  extra:'It also sets the flags — ZF, SF, CF, OF — but nothing in this program reads them.',
+  run:function(s){ s.regs.rcx = s.regs.rcx + s.regs.rax; s.flags={zf:0,sf:0,cf:0,of:0}; }});
+step({fn:'add_second', id:'s8', cline:10, title:'Shuffle into eax',
+  body:'Debug codegen keeps every intermediate in <code>eax</code> before storing. An optimiser would have added straight into the destination.',
+  run:function(s){ s.regs.rax = s.regs.rcx; }});
+step({fn:'add_second', id:'s9', cline:10, title:'Store the local step1',
+  body:'<code>int step1 = num1 + num2;</code> — the C line finally lands in memory. This is the only true local variable in the whole program apart from <code>result</code>.',
+  math:'step1$[rsp] = [rsp + 32] = ' + hex(0x14FEA0) + '\nit sits ABOVE the 32-byte shadow space, INSIDE add_second\'s own frame',
+  run:function(s){ W(s,0x14FEA0,30,'step1 = 30 · local','add_second'); }});
+step({fn:'add_second', id:'s10', cline:11, title:'Stage num3 as argument 2',
+  body:'Reads the homed <code>num3</code> at <code>[rsp + 80]</code> and puts it in <code>edx</code> — argument 2 of <code>add_third</code>.',
+  run:function(s){ s.regs.rdx = R(s,0x14FED0); }});
+step({fn:'add_second', id:'s11', cline:11, title:'Stage step1 as argument 1',
+  body:'Reads the local back out and puts it in <code>ecx</code> — argument 1. The stack round-trip for <code>step1</code> is complete: written, then immediately read.',
+  run:function(s){ s.regs.rcx = R(s,0x14FEA0); }});
+step({fn:'add_second', id:'s12', cline:11, title:'call add_third',
+  body:'Four frames deep now. This is the deepest the program ever goes.',
+  math:'shadow space for add_third = ' + hex(0x14FE80) + ' … ' + hex(0x14FE9F),
+  run:function(s){ push(s, code(NEXT['s12']), 'return address → ' + sym(NEXT['s12'])); enter(s,'add_third'); }});
+
+/* ---------------- add_third ---------------- */
+step({fn:'add_third', id:'t1', cline:4, title:'Home num3 — and notice what is missing',
+  body:'<code>add_third</code> homes its parameters like everyone else, but look at what comes next in the listing: <b>no <code>sub rsp</code></b>.',
+  math:'rsp + 16 = ' + hex(0x14FE88),
+  extra:'It is a <b>leaf function</b> — it calls nothing, so it needs no shadow space of its own and no frame. That is why its symbols stayed small: <code>num3$ = 16</code> instead of 80. Nothing shifted them.',
+  run:function(s){ W(s,0x14FE88,30,'num3 = 30 · home slot 2','add_third'); }});
+step({fn:'add_third', id:'t2', cline:4, title:'Home current_total',
+  body:'<code>current_total = 30</code>, the value <code>add_second</code> computed as <code>step1</code>, into home slot 1.',
+  math:'rsp +  8 = ' + hex(0x14FE80),
+  run:function(s){ W(s,0x14FE80,30,'current_total = 30 · home slot 1','add_third'); }});
+step({fn:'add_third', id:'t3', cline:5, title:'Load num3',
+  body:'<code>num3$[rsp]</code> = <code>[rsp + 16]</code>. No frame was opened, so the symbol needs no adjustment at all.',
+  run:function(s){ s.regs.rax = R(s,0x14FE88); }});
+step({fn:'add_third', id:'t4', cline:5, title:'Load current_total',
+  body:'<code>current_total$[rsp]</code> = <code>[rsp + 8]</code>.',
+  run:function(s){ s.regs.rcx = R(s,0x14FE80); }});
+step({fn:'add_third', id:'t5', cline:5, title:'The final addition',
+  alu:{op:'ADD', a:'ecx  30', b:'eax  30', r:'ecx  60', note:'current_total + num3'},
+  body:'<code>30 + 30 = 60</code>. This is the answer the whole program exists to produce.',
+  run:function(s){ s.regs.rcx = s.regs.rcx + s.regs.rax; s.flags={zf:0,sf:0,cf:0,of:0}; }});
+step({fn:'add_third', id:'t6', cline:5, title:'Put the result where the ABI says',
+  body:'Integer return values go in <code>rax</code>. Every caller up the chain will simply leave it there.',
+  run:function(s){ s.regs.rax = s.regs.rcx; }});
+step({fn:'add_third', id:'t7', cline:6, title:'ret — the first unwind',
+  body:'<code>ret</code> pops the return address into <code>rip</code> and adds 8 to <code>rsp</code>. No <code>add rsp</code> was needed first, because a leaf function never moved it.',
+  math:'rsp: ' + hex(0x14FE78) + '  →  ' + hex(0x14FE80),
+  extra:'Nothing is erased. The homed values at ' + hex(0x14FE80) + ' and ' + hex(0x14FE88) + ' are still sitting there — they are just no longer owned by anyone. The next call that reaches this depth will write over them.',
+  run:function(s){ leave(s); pop(s); }});
+
+/* ---------------- unwind ---------------- */
+step({fn:'add_second', id:'s13', cline:12, title:'Close add_second\'s frame',
+  alu:{op:'ADD', a:'rsp  0x14FE80', b:'56', r:'0x14FEB8', note:'the frame is released by arithmetic, nothing is erased'},
+  body:'<code>add rsp, 56</code> undoes the <code>sub</code> exactly. <code>step1</code> and the shadow space go out of scope in one instruction.',
+  math:'rsp: ' + hex(0x14FE80) + '  →  ' + hex(0x14FEB8) + '   (back to the entry value)',
+  extra:'<code>rsp</code> must be exactly where it was on entry before <code>ret</code> runs, or <code>ret</code> pops the wrong 8 bytes and the program jumps into nowhere.',
+  run:function(s){ s.rsp += 56; frameTop(s).base = s.rsp; s.flags={zf:0,sf:0,cf:0,of:0}; }});
+step({fn:'add_second', id:'s14', cline:12, title:'Return 60',
+  body:'<code>rax</code> still holds 60 — <code>add_second</code> never touched it after the call, so <code>return add_third(...)</code> costs zero instructions.',
+  run:function(s){ leave(s); pop(s); }});
+step({fn:'start_addition', id:'a9', cline:17, title:'Close start_addition\'s frame',
+  alu:{op:'ADD', a:'rsp  0x14FEC0', b:'40', r:'0x14FEE8', note:'40 bytes released'},
+  math:'rsp: ' + hex(0x14FEC0) + '  →  ' + hex(0x14FEE8),
+  body:'Same undo, 40 bytes this time.',
+  run:function(s){ s.rsp += 40; frameTop(s).base = s.rsp; s.flags={zf:0,sf:0,cf:0,of:0}; }});
+step({fn:'start_addition', id:'a10', cline:17, title:'Return 60 again',
+  body:'The value has now passed through three functions without a single instruction copying it. That is the point of a register-based return convention.',
+  run:function(s){ leave(s); pop(s); }});
+
+/* ---------------- back in main ---------------- */
+step({fn:'main', id:'m6', cline:21, title:'Store the result',
+  body:'<code>int result = ...</code> lands in main\'s local slot.',
+  math:'result$[rsp] = [rsp + 32] = ' + hex(0x14FF10) + '\n32 is just above main\'s own 32-byte shadow space',
+  run:function(s){ W(s,0x14FF10,60,'result = 60 · local','main'); }});
+step({fn:'main', id:'m7', cline:22, title:'Load it straight back',
+  body:'Into <code>edx</code> — argument 2 of <code>printf</code>, the <code>%d</code>.',
+  run:function(s){ s.regs.rdx = R(s,0x14FF10); }});
+step({fn:'main', id:'m8', cline:22, title:'Address of the format string',
+  body:'<code>lea</code> loads the <b>address</b>, not the contents. <code>$SG10217</code> is the compiler-generated label for the string literal in <code>_DATA</code>.',
+  math:'rcx = ' + hex(FMT_STR).replace('0x0','0x') + '   → "The final hacked calculation is: %d\\n"',
+  extra:'This is the difference that trips everyone: <code>mov rcx, [label]</code> would have loaded the first 8 <i>characters</i>. <code>printf</code> wants the pointer.',
+  run:function(s){ s.regs.rcx = 'FMT'; }});
+step({fn:'main', id:'m9', cline:22, title:'call printf',
+  body:'A real call into the C runtime. It reads the format string through <code>rcx</code> and the value through <code>edx</code>, and uses the 32 bytes of shadow space main reserved at ' + hex(0x14FEF0) + '.',
+  extra:'<b>printf destroys registers.</b> Everything volatile — <code>rax rcx rdx r8 r9 r10 r11</code> — may come back as garbage. It returns the number of characters printed in <code>eax</code>, which is 36 here, not 0.',
+  run:function(s){
+    push(s, code(NEXT['m9']), 'return address → ' + sym(NEXT['m9']));
+    s.out.push('The final hacked calculation is: 60');
+    s.rsp += 8; s.rd.push(s.rsp - 8);
+    s.regs.rax = 36; s.regs.rcx = '?'; s.regs.rdx = '?'; s.regs.r8 = '?'; s.flags='?';
+  }});
+step({fn:'main', id:'m10', cline:23, title:'return 0',
+  alu:{op:'XOR', a:'eax  36', b:'eax  36', r:'eax  0', note:'anything XOR itself is zero — 2 bytes instead of 5'},
+  body:'<code>xor eax, eax</code> is the two-byte way to write <code>rax = 0</code>. It is not optional here — <code>printf</code> left 36 in <code>eax</code>, and without this the process would exit with status 36.',
+  extra:'<code>xor</code> on a 32-bit register clears all 64 bits, so this really does zero <code>rax</code>.',
+  run:function(s){ s.regs.rax = 0; s.flags={zf:1,sf:0,cf:0,of:0}; }});
+step({fn:'main', id:'m11', cline:24, title:'Close main\'s frame',
+  alu:{op:'ADD', a:'rsp  0x14FEF0', b:'56', r:'0x14FF28', note:'56 bytes released'},
+  math:'rsp: ' + hex(0x14FEF0) + '  →  ' + hex(0x14FF28) + '   (its entry value)',
+  body:'56 bytes released.',
+  run:function(s){ s.rsp += 56; frameTop(s).base = s.rsp; s.flags={zf:0,sf:0,cf:0,of:0}; }});
+step({fn:'main', id:'m12', cline:24, title:'ret — back to the C runtime',
+  body:'The last return address pops. The runtime takes <code>eax</code> as the exit code and calls <code>exit(0)</code>.',
+  extra:'The stack is exactly as it was before <code>main</code> started. Every byte written along the way is still physically there — the next thing to use this stack region simply overwrites it.',
+  run:function(s){ leave(s); pop(s); }});
+
+/* ============================================================
+   4. Build every state up front so stepping back is free
+   ============================================================ */
+function initial(){
+  var s = {rsp:0x14FF28, regs:{rax:null,rcx:null,rdx:null,r8:null,r9:null}, flags:null,
+           mem:{}, frames:[], out:[], rd:[], wr:[]};
+  s.mem[0x14FF28] = {v:code(CRT_RET), label:'return address → the C runtime', user:null, kind:'ret'};
+  s.mem[0x14FF30] = {v:null, label:'shadow space the runtime reserved for main', user:'crt', kind:'shadow'};
+  s.mem[0x14FF38] = {v:null, label:'shadow space', user:'crt', kind:'shadow'};
+  s.mem[0x14FF40] = {v:null, label:'shadow space', user:'crt', kind:'shadow'};
+  s.mem[0x14FF48] = {v:null, label:'shadow space', user:'crt', kind:'shadow'};
+  s.frames.push({fn:'main', ret:0x14FF28, base:0x14FF28});
+  return s;
+}
+var STATES = [];
+(function build(){
+  var s = initial();
+  for (var i = 0; i < T.length; i++){
+    s = JSON.parse(JSON.stringify(s));
+    s.rd = []; s.wr = [];
+    T[i].run(s);
+    STATES.push(s);
+  }
+})();
+
+/* ============================================================
+   5. Render
+   ============================================================ */
+var cur = 0, timer = null;
+var elAsm = document.getElementById('asm'),
+    elStack = document.getElementById('stack'),
+    elRegs = document.getElementById('regs'),
+    elExpl = document.getElementById('expl'),
+    elCsrc = document.getElementById('csrc'),
+    elTerm = document.getElementById('term'),
+    elSn = document.getElementById('sn'),
+    elSt = document.getElementById('st'),
+    elScrub = document.getElementById('scrub'),
+    elInfn = document.getElementById('infn'),
+    elRspNow = document.getElementById('rspnow'),
+    elAsmPos = document.getElementById('asmpos');
+
+var COLOR = {main:'--f-main', start_addition:'--f-start', add_second:'--f-second',
+             add_third:'--f-third', crt:'--f-crt', square:'--f-crt'};
+function cvar(fn){ return 'var(' + (COLOR[fn] || '--f-crt') + ')'; }
+
+/* --- assembly listing, built once --- */
+(function(){
+  var h = '';
+  FUNCS.forEach(function(f){
+    h += '<div class="' + (f.dead ? 'dead' : '') + '">';
+    h += '<div class="fnh"><span class="dot" style="background:var(' + f.color + ')"></span>' + f.fn +
+         (f.badge ? '<span class="badge">' + f.badge + '</span>' : '') + '</div>';
+    f.syms.forEach(function(sy){ h += '<div class="sym">' + sy + '</div>'; });
+    f.lines.forEach(function(l){
+      h += '<div class="il" id="L_' + l.id + '">' + l.t +
+           (l.c ? '<span class="cm">   ' + l.c + '</span>' : '') + '</div>';
+    });
+    h += '</div>';
+  });
+  elAsm.innerHTML = h;
+})();
+
+/* --- C source, built once --- */
+(function(){
+  var h = '';
+  CSRC.forEach(function(l, i){
+    var txt = l.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    if (txt.trim().indexOf('//') === 0) txt = '<span class="cmt">' + txt + '</span>';
+    h += '<div class="cl" id="C_' + (i+1) + '"><span class="n">' + (i+1) + '</span><span>' + (txt || ' ') + '</span></div>';
+  });
+  elCsrc.innerHTML = h;
+})();
+
+function bandOf(s, addr){
+  for (var i = s.frames.length - 1; i >= 0; i--){
+    var f = s.frames[i];
+    if (addr >= f.base && addr <= f.ret) return f.fn;
+  }
+  if (addr > 0x14FF28) return 'crt';
+  return null;
+}
+
+function render(){
+  var s = STATES[cur], t = T[cur], prev = cur > 0 ? STATES[cur-1] : null;
+  var line = null;
+  if (t.id){
+    FUNCS.forEach(function(f){ f.lines.forEach(function(l){ if (l.id === t.id) line = l; }); });
+  }
+
+  /* --- listing --- */
+  var lines = elAsm.querySelectorAll('.il');
+  Array.prototype.forEach.call(lines, function(el){ el.className = 'il'; });
+  if (t.id){
+    var el = document.getElementById('L_' + t.id);
+    if (el){
+      el.className = 'il on';
+      var box = document.getElementById('asmScroll');
+      var off = el.offsetTop - box.clientHeight / 2;
+      box.scrollTo({top: Math.max(0, off), behavior: 'smooth'});
+    }
+  }
+  elAsmPos.textContent = t.id ? t.fn : 'not started';
+
+  /* --- stack --- */
+  var rows = '';
+  for (var a = HI; a >= LO; a -= 8){
+    var slot = s.mem[a], band = bandOf(s, a);
+    var isRsp = (a === s.rsp);
+    var wrote = s.wr.indexOf(a) !== -1, read = s.rd.indexOf(a) !== -1;
+    var stale = !band && slot && slot.v !== null && slot.v !== undefined;
+
+    var cls = 'srow';
+    if (wrote) cls += ' wr'; else if (read) cls += ' rd'; else if (isRsp) cls += ' rsp';
+    if (stale) cls += ' stale';
+    if (!slot || slot.v === null || slot.v === undefined) cls += ' empty';
+
+    var col = band ? cvar(band) : 'transparent';
+    var val = '', lbl = '', tag = '';
+
+    if (slot && slot.v !== null && slot.v !== undefined){
+      val = '<span class="val">' + slot.v + '</span>';
+      lbl = '<span class="lbl">' + slot.label + '</span>';
+      if (slot.user && slot.user !== band && slot.user !== 'crt'){
+        tag = '<span class="tag" style="color:' + cvar(slot.user) + '">' + slot.user + '</span>';
+      }
+    } else if (band){
+      lbl = '<span class="lbl">' + (slot ? slot.label : 'reserved — not yet written') + '</span>';
+    } else {
+      lbl = '<span class="lbl" style="color:#3E4E60">free</span>';
+    }
+
+    rows += '<div class="' + cls + '">' +
+              '<div class="addr">' + hex(a) + '</div>' +
+              '<div class="band" style="background:' + col + '"></div>' +
+              '<div class="body">' + val + tag + lbl + '</div>' +
+              '<div class="ptr">' + (isRsp ? '<b>← rsp</b>' : '') + '</div>' +
+              (!band ? '<div class="hatch"></div>' : '') +
+            '</div>';
+  }
+  elStack.innerHTML = rows;
+  elRspNow.textContent = 'rsp = ' + hex(s.rsp) + '  ·  depth ' + s.frames.length;
+
+  /* --- CPU: instruction pointer --- */
+  var ipAddr = t.id ? ADDR[t.id] : null;
+  document.getElementById('ip').innerHTML =
+    '<span class="k">rip</span>' +
+    '<span class="a">' + (ipAddr === null ? '—' : code(ipAddr)) + '</span>' +
+    '<span class="d' + (ipAddr === null ? ' idle' : '') + '">' +
+      (ipAddr === null ? 'about to fetch the first instruction of main'
+                       : sym(ipAddr) + '   ' + (line ? line.t.replace(/\s+/g,' ') : '')) +
+    '</span>';
+  document.getElementById('cpuh').textContent = 'depth ' + s.frames.length;
+
+  /* --- CPU: registers --- */
+  var order = [['rax','return value'],['rcx','arg 1'],['rdx','arg 2'],
+               ['r8','arg 3'],['r9','arg 4 · unused']];
+  var rh = '';
+  order.forEach(function(p){
+    var v = s.regs[p[0]], pv = prev ? prev.regs[p[0]] : undefined;
+    var changed = prev && JSON.stringify(v) !== JSON.stringify(pv);
+    var nil = (v === null || v === undefined);
+    var disp = nil ? '—' : (v === 'FMT' ? code(FMT_STR) : v);
+    rh += '<div class="reg' + (changed ? ' chg' : '') + (nil ? ' dead' : '') + '">' +
+            '<div class="rn">' + p[0] + ' · ' + p[1] + '</div>' +
+            '<div class="rv' + (nil ? ' nil' : '') + '">' + disp + '</div>' +
+          '</div>';
+  });
+  var mod = ((s.rsp % 16) + 16) % 16;
+  rh += '<div class="reg"><div class="rn">rsp · stack pointer</div>' +
+        '<div class="rv">' + hex(s.rsp) + '</div>' +
+        '<div class="rx ' + (mod === 0 ? 'align-ok' : 'align-mid') + '">% 16 = ' + mod +
+        (mod === 0 ? ' · safe to call' : ' · mid-function') + '</div></div>';
+  elRegs.innerHTML = rh;
+
+  /* --- CPU: ALU --- */
+  var elAlu = document.getElementById('alu');
+  if (t.alu){
+    elAlu.className = 'alu';
+    elAlu.innerHTML =
+      '<div class="alu-op">' +
+        '<div class="alu-badge">' + t.alu.op + '</div>' +
+        '<div class="alu-eq"><b>' + t.alu.a + '</b>\n<b>' + t.alu.b + '</b>' +
+        '  →  <span class="res">' + t.alu.r + '</span></div>' +
+      '</div>' +
+      (t.alu.note ? '<div class="alu-note">' + t.alu.note + '</div>' : '');
+  } else {
+    elAlu.className = 'alu idle';
+    var txt0 = line ? line.t : '';
+    elAlu.textContent =
+      !t.id                    ? 'idle' :
+      /^call/.test(txt0)       ? 'rsp − 8, implied by the push shown below' :
+      /^ret/.test(txt0)        ? 'rsp + 8, implied by the pop shown below' :
+      /^lea/.test(txt0)        ? 'address arithmetic only — no memory is touched' :
+                                 'idle — this instruction only moves data';
+  }
+
+  /* --- CPU: flags --- */
+  var fl = s.flags, fh = '';
+  ['zf','sf','cf','of'].forEach(function(f){
+    var name = {zf:'ZF zero', sf:'SF sign', cf:'CF carry', of:'OF overflow'}[f];
+    if (fl === '?')      fh += '<div class="flag unk"><b>' + name + '</b> ?</div>';
+    else if (!fl)        fh += '<div class="flag"><b>' + name + '</b> —</div>';
+    else                 fh += '<div class="flag ' + (fl[f] ? 'on' : 'off') + '"><b>' +
+                                name + '</b> ' + fl[f] + '</div>';
+  });
+  document.getElementById('flags').innerHTML = fh;
+
+  /* --- the bus between CPU and RAM --- */
+  var txt = line ? line.t : '';
+  var isCall = /^call/.test(txt), isRet = /^ret/.test(txt);
+  var bus = document.getElementById('bus'), cls, arrow, what, sz;
+
+  if (isCall){
+    cls = 'push'; arrow = '↓';
+    what = '<b>PUSH</b> return address ' + (s.wr.length ? s.mem[s.wr[0]].v : '') +
+           ' → ' + hex(s.wr[0]);
+    sz = 'qword · 8 bytes';
+  } else if (isRet){
+    cls = 'pop'; arrow = '↑';
+    what = '<b>POP</b> return address from ' + hex(s.rd[0]) + ' → rip';
+    sz = 'qword · 8 bytes';
+  } else if (s.wr.length){
+    cls = 'store'; arrow = '↓';
+    what = '<b>STORE</b> ' + s.mem[s.wr[0]].v + ' → ' + hex(s.wr[0]);
+    sz = 'dword · 4 bytes';
+  } else if (s.rd.length){
+    cls = 'load'; arrow = '↑';
+    what = '<b>LOAD</b> ' + hex(s.rd[0]) + ' → ' +
+           (/mov\s+(\w+)/.exec(txt) ? /mov\s+(\w+)/.exec(txt)[1] : 'register');
+    sz = 'dword · 4 bytes';
+  } else {
+    cls = 'none'; arrow = '×';
+    what = t.id ? 'no memory access — this instruction never leaves the CPU'
+                : 'idle';
+    sz = '';
+  }
+  bus.className = 'bus ' + cls;
+  bus.innerHTML = '<span class="arrow">' + arrow + '</span>' +
+                  '<span class="what">' + what + '</span>' +
+                  '<span class="sz">' + sz + '</span>';
+
+  /* --- explanation --- */
+  var eh = '';
+  if (line) eh += '<div class="instr">' + line.t.replace(/\s+/g,' ') + '</div>';
+  eh += '<h3>' + t.title + '</h3>';
+  eh += '<p>' + t.body + '</p>';
+  if (t.math) eh += '<div class="math">' + t.math + '</div>';
+  if (t.extra) eh += '<p>' + t.extra + '</p>';
+  elExpl.innerHTML = eh;
+
+  /* --- C source --- */
+  Array.prototype.forEach.call(elCsrc.children, function(el){ el.className = 'cl'; });
+  var cl = document.getElementById('C_' + t.cline);
+  if (cl) cl.className = 'cl on';
+
+  /* --- console --- */
+  elTerm.innerHTML = s.out.length
+    ? s.out.join('\n')
+    : '<span class="muted">nothing printed yet</span>';
+
+  /* --- chrome --- */
+  elSn.textContent = cur;
+  elSt.textContent = T.length - 1;
+  elScrub.value = cur;
+  elInfn.textContent = t.fn;
+  elInfn.style.color = cvar(t.fn);
+  document.getElementById('btnPrev').disabled = (cur === 0);
+  document.getElementById('btnNext').disabled = (cur === T.length - 1);
+}
+
+/* --- controls --- */
+function go(i){
+  cur = Math.max(0, Math.min(T.length - 1, i));
+  render();
+  if (cur === T.length - 1) halt();
+}
+function halt(){
+  if (timer){ clearInterval(timer); timer = null; }
+  document.getElementById('btnPlay').textContent = '▶ Auto';
+}
+function play(){
+  if (timer){ halt(); return; }
+  if (cur === T.length - 1) cur = 0;
+  document.getElementById('btnPlay').textContent = '❚❚ Pause';
+  timer = setInterval(function(){ go(cur + 1); }, 1100);
+}
+document.getElementById('btnNext').addEventListener('click', function(){ halt(); go(cur + 1); });
+document.getElementById('btnPrev').addEventListener('click', function(){ halt(); go(cur - 1); });
+document.getElementById('btnReset').addEventListener('click', function(){ halt(); go(0); });
+document.getElementById('btnPlay').addEventListener('click', play);
+elScrub.addEventListener('input', function(){ halt(); go(parseInt(this.value, 10)); });
+
+document.addEventListener('keydown', function(e){
+  if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
+  if (e.key === 'ArrowRight'){ e.preventDefault(); halt(); go(cur + 1); }
+  else if (e.key === 'ArrowLeft'){ e.preventDefault(); halt(); go(cur - 1); }
+  else if (e.key === ' '){ e.preventDefault(); play(); }
+  else if (e.key === 'Home'){ e.preventDefault(); halt(); go(0); }
+  else if (e.key === 'End'){ e.preventDefault(); halt(); go(T.length - 1); }
+});
+
+elScrub.max = T.length - 1;
+render();
+</script>
+</body>
+</html>

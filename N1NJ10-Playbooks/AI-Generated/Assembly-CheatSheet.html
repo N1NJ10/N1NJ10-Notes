@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>x86-64 Assembly Cheat Sheet</title>
+<style>
+:root{
+  --bg:#0C1118;
+  --bg2:#111925;
+  --panel:#152030;
+  --panel2:#1A2636;
+  --line:#243448;
+  --line2:#2F435C;
+  --text:#DCE6F2;
+  --dim:#8698AC;
+  --dimmer:#5D7086;
+
+  /* the only meaningful colors on this page: operand width */
+  --w64:#F5A524;
+  --w32:#35C2E8;
+  --w16:#A78BFA;
+  --w8h:#FB7185;
+  --w8l:#34D399;
+
+  --mono:ui-monospace,"SFMono-Regular","JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:15px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit}
+code,kbd{font-family:var(--mono)}
+
+/* ---------- nav ---------- */
+nav{
+  position:sticky;top:0;z-index:50;
+  background:rgba(12,17,24,.92);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.nav-in{
+  max-width:1180px;margin:0 auto;padding:0 20px;
+  display:flex;align-items:center;gap:22px;height:52px;overflow-x:auto;
+  scrollbar-width:none;
+}
+.nav-in::-webkit-scrollbar{display:none}
+.nav-mark{
+  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.14em;
+  color:var(--text);white-space:nowrap;text-decoration:none;flex:none;
+}
+.nav-mark span{color:var(--w64)}
+.nav-in a.nl{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim);text-decoration:none;white-space:nowrap;padding:4px 0;
+  border-bottom:1px solid transparent;transition:color .15s,border-color .15s;
+}
+.nav-in a.nl:hover,.nav-in a.nl:focus-visible{color:var(--text);border-bottom-color:var(--w64)}
+
+/* ---------- shell ---------- */
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+section{padding:56px 0;border-top:1px solid var(--line)}
+section:first-of-type{border-top:none}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--dimmer);margin:0 0 10px;
+}
+h2{
+  font-family:var(--mono);font-size:clamp(20px,3.2vw,27px);font-weight:700;
+  letter-spacing:-.01em;margin:0 0 8px;
+}
+h3{
+  font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim);margin:34px 0 12px;
+}
+.lede{color:var(--dim);max-width:70ch;margin:0 0 26px}
+p{max-width:76ch}
+
+/* ---------- hero ---------- */
+header.hero{padding:60px 0 46px}
+.hero h1{
+  font-family:var(--mono);font-weight:700;
+  font-size:clamp(30px,6.4vw,58px);line-height:1.02;letter-spacing:-.03em;
+  margin:0 0 14px;
+}
+.hero h1 em{font-style:normal;color:var(--w64)}
+.hero .sub{color:var(--dim);max-width:62ch;margin:0 0 34px}
+
+/* ---------- register bar (signature) ---------- */
+.regbar{
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:22px 20px 18px;
+}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:22px}
+.chip{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;
+  background:var(--bg2);color:var(--dim);border:1px solid var(--line);
+  border-radius:5px;padding:5px 9px;cursor:pointer;transition:.14s;
+}
+.chip:hover{color:var(--text);border-color:var(--line2)}
+.chip[aria-pressed="true"]{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:600}
+.ruler{
+  display:grid;grid-template-columns:repeat(8,1fr);
+  font-family:var(--mono);font-size:10px;color:var(--dimmer);margin-bottom:5px;
+}
+.ruler span{text-align:center;letter-spacing:.04em}
+.bars{display:grid;gap:6px}
+.brow{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.cell{
+  grid-column:span 1;border-radius:6px;padding:11px 8px;text-align:center;
+  font-family:var(--mono);font-weight:700;font-size:clamp(11px,2vw,15px);letter-spacing:.06em;
+  color:var(--bg);position:relative;transition:transform .16s ease,filter .16s;
+}
+.cell small{
+  display:block;font-weight:500;font-size:9.5px;letter-spacing:.1em;
+  opacity:.72;margin-top:2px;
+}
+.cell:hover{transform:translateY(-2px);filter:brightness(1.08)}
+.c64{background:var(--w64)}.c32{background:var(--w32)}.c16{background:var(--w16)}
+.c8h{background:var(--w8h)}.c8l{background:var(--w8l)}
+.cnone{
+  background:repeating-linear-gradient(135deg,var(--bg2) 0 6px,transparent 6px 12px);
+  border:1px dashed var(--line2);color:var(--dimmer);font-weight:500;
+}
+.ghost{background:transparent}
+.regnote{
+  font-family:var(--mono);font-size:12px;color:var(--dim);
+  margin-top:16px;padding-top:14px;border-top:1px solid var(--line);
+}
+.regnote b{color:var(--text);font-weight:600}
+
+/* ---------- legend ---------- */
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.lg{
+  display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;
+  color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:4px 11px 4px 5px;
+}
+.sw{width:12px;height:12px;border-radius:3px;flex:none}
+
+/* ---------- tables ---------- */
+.tbox{
+  overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel);
+}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px}
+th{
+  text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dimmer);font-weight:600;padding:11px 14px;background:var(--bg2);
+  border-bottom:1px solid var(--line);white-space:nowrap;
+}
+td{padding:9px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--panel2)}
+td.m,th.m{font-family:var(--mono)}
+td.m b{color:var(--text)}
+.mn{font-family:var(--mono);color:var(--text);font-weight:600;white-space:nowrap}
+.dimtd{color:var(--dim)}
+
+/* width-tinted monospace cells */
+.t64{font-family:var(--mono);color:var(--w64);font-weight:600}
+.t32{font-family:var(--mono);color:var(--w32);font-weight:600}
+.t16{font-family:var(--mono);color:var(--w16);font-weight:600}
+.t8h{font-family:var(--mono);color:var(--w8h);font-weight:600}
+.t8l{font-family:var(--mono);color:var(--w8l);font-weight:600}
+.na{font-family:var(--mono);color:var(--dimmer)}
+
+/* pills */
+.pill{
+  display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+  padding:2px 7px;border-radius:4px;border:1px solid var(--line2);color:var(--dim);
+  text-transform:uppercase;white-space:nowrap;
+}
+.pill.save{border-color:#3E6B52;color:#7FD6A6;background:rgba(52,211,153,.07)}
+.pill.vol{border-color:#7A4B54;color:#FB9AA6;background:rgba(251,113,133,.07)}
+
+/* ---------- panels / grids ---------- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:860px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;
+}
+.card h4{
+  font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  margin:0 0 12px;color:var(--text);
+}
+.card p{margin:0 0 10px;font-size:13.5px;color:var(--dim)}
+.card ul{margin:0;padding-left:18px;font-size:13.5px;color:var(--dim)}
+.card li{margin-bottom:6px}
+.card li b,.card p b{color:var(--text);font-weight:600}
+.card code,li code,p code,td code{
+  background:var(--bg2);border:1px solid var(--line);border-radius:4px;
+  padding:1px 5px;font-size:12.5px;color:var(--text);
+}
+
+/* code blocks */
+pre{
+  background:var(--bg2);border:1px solid var(--line);border-radius:8px;
+  padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;
+  line-height:1.65;margin:0 0 14px;color:var(--text);
+}
+pre .cm{color:var(--dimmer)}
+pre .op{color:var(--w64)}
+pre .rg{color:var(--w32)}
+pre .lb{color:var(--w16)}
+
+/* legal / illegal */
+.rulelist{list-style:none;padding:0;margin:0;font-family:var(--mono);font-size:13px}
+.rulelist li{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line)}
+.rulelist li:last-child{border-bottom:none}
+.ok,.no{flex:none;font-weight:700;width:14px;text-align:center}
+.ok{color:var(--w8l)}.no{color:var(--w8h)}
+.rulelist .why{color:var(--dimmer);font-family:var(--sans);font-size:12.5px}
+
+/* memory map */
+.memmap{border:1px solid var(--line);border-radius:10px;overflow:hidden;font-family:var(--mono);font-size:12.5px}
+.mrow{display:grid;grid-template-columns:100px 1fr;border-bottom:1px solid var(--line);background:var(--panel)}
+.mrow:last-child{border-bottom:none}
+.mrow .k{padding:11px 12px;color:var(--dimmer);background:var(--bg2);border-right:1px solid var(--line);font-size:11px;letter-spacing:.06em}
+.mrow .v{padding:11px 14px}
+.mrow .v b{color:var(--text)}
+.mrow .v span{color:var(--dim);font-family:var(--sans);font-size:12.5px}
+
+/* search */
+.search{
+  display:flex;align-items:center;gap:10px;margin:0 0 16px;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:0 14px;
+}
+.search input{
+  flex:1;background:transparent;border:none;outline:none;color:var(--text);
+  font-family:var(--mono);font-size:14px;padding:12px 0;
+}
+.search input::placeholder{color:var(--dimmer)}
+.search .cnt{font-family:var(--mono);font-size:11px;color:var(--dimmer);white-space:nowrap}
+.search:focus-within{border-color:var(--line2)}
+.nores{display:none;padding:22px;text-align:center;color:var(--dimmer);font-family:var(--mono);font-size:13px}
+
+/* stack diagram */
+.stack{border:1px solid var(--line);border-radius:10px;overflow:hidden;font-family:var(--mono);font-size:12.5px}
+.srow{display:grid;grid-template-columns:1fr 130px;background:var(--panel);border-bottom:1px solid var(--line)}
+.srow:last-child{border-bottom:none}
+.srow .sl{padding:10px 14px}
+.srow .sr{padding:10px 14px;color:var(--dimmer);border-left:1px solid var(--line);font-size:11px;text-align:right}
+.srow.hi{background:var(--panel2)}
+.srow.hi .sl{color:var(--w64);font-weight:600}
+.srow.mark .sl{color:var(--w32);font-weight:600}
+.srow.mark2 .sl{color:var(--w8l);font-weight:600}
+
+/* calculator */
+.calc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px}
+.crow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:640px){.crow{grid-template-columns:1fr}}
+.field label{
+  display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--dimmer);margin-bottom:6px;
+}
+.field select,.field input[type=number]{
+  width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:6px;
+  color:var(--text);font-family:var(--mono);font-size:13.5px;padding:9px 11px;outline:none;
+}
+.field select:focus,.field input:focus{border-color:var(--line2)}
+.check{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:13px;color:var(--dim);cursor:pointer;padding-top:24px}
+.check input{width:16px;height:16px;accent-color:var(--w64);cursor:pointer}
+.calcout{margin-top:6px}
+.breakdown{list-style:none;padding:0;margin:0 0 14px;font-family:var(--mono);font-size:12.5px}
+.breakdown li{display:flex;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid var(--line);color:var(--dim)}
+.breakdown li:last-child{border-bottom:none;border-top:1px solid var(--line2);color:var(--text);font-weight:700;margin-top:4px;padding-top:9px}
+.breakdown li span:last-child{color:var(--text);font-variant-numeric:tabular-nums}
+.warn{
+  font-family:var(--mono);font-size:12px;color:var(--w64);
+  background:rgba(245,165,36,.07);border:1px solid rgba(245,165,36,.25);
+  border-radius:6px;padding:9px 12px;margin-bottom:14px;
+}
+
+:focus-visible{outline:2px solid var(--w32);outline-offset:2px;border-radius:3px}
+footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--dimmer);font-family:var(--mono);font-size:11.5px}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-in">
+    <a class="nav-mark" href="#top">X86<span>-</span>64</a>
+    <a class="nl" href="#registers">Registers</a>
+    <a class="nl" href="#roles">Roles &amp; ABI</a>
+    <a class="nl" href="#where">CPU vs RAM</a>
+    <a class="nl" href="#sizes">Sizes</a>
+    <a class="nl" href="#stack">Stack &amp; RSP</a>
+    <a class="nl" href="#instructions">Instructions</a>
+    <a class="nl" href="#flags">Flags &amp; Jumps</a>
+    <a class="nl" href="#syscalls">Syscalls</a>
+  </div>
+</nav>
+
+<div class="wrap" id="top">
+
+<header class="hero">
+  <p class="eyebrow">Study sheet — Intel syntax, NASM</p>
+  <h1>One register,<br>four <em>widths</em>.</h1>
+  <p class="sub">Every general-purpose register is a single 64-bit box. The shorter names are not other registers — they are windows onto the low bits of the same box. Pick a register to see its whole family.</p>
+
+  <div class="regbar">
+    <div class="chips" id="chips" role="group" aria-label="Choose a register"></div>
+
+    <div class="ruler" aria-hidden="true">
+      <span>63:56</span><span>55:48</span><span>47:40</span><span>39:32</span>
+      <span>31:24</span><span>23:16</span><span>15:8</span><span>7:0</span>
+    </div>
+
+    <div class="bars" id="bars"></div>
+
+    <p class="regnote" id="regnote"></p>
+  </div>
+
+  <div class="legend">
+    <span class="lg"><span class="sw" style="background:var(--w64)"></span>64-bit · qword</span>
+    <span class="lg"><span class="sw" style="background:var(--w32)"></span>32-bit · dword</span>
+    <span class="lg"><span class="sw" style="background:var(--w16)"></span>16-bit · word</span>
+    <span class="lg"><span class="sw" style="background:var(--w8h)"></span>8-bit high byte</span>
+    <span class="lg"><span class="sw" style="background:var(--w8l)"></span>8-bit low byte</span>
+  </div>
+</header>
+
+<!-- ================= REGISTERS ================= -->
+<section id="registers">
+  <p class="eyebrow">Inside the CPU</p>
+  <h2>The 16 general-purpose registers</h2>
+  <p class="lede">These live on the chip. There are exactly 16 of them, they have names instead of addresses, and access costs zero cycles of memory traffic. Everything else your program touches is RAM.</p>
+
+  <div class="tbox">
+    <table>
+      <thead><tr>
+        <th>64-bit</th><th>32-bit</th><th>16-bit</th><th>8-bit low</th><th>8-bit high</th><th>Traditional purpose</th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="t64">rax</td><td class="t32">eax</td><td class="t16">ax</td><td class="t8l">al</td><td class="t8h">ah</td><td class="dimtd">Accumulator — return values, <code>mul</code>/<code>div</code> implicit operand</td></tr>
+        <tr><td class="t64">rbx</td><td class="t32">ebx</td><td class="t16">bx</td><td class="t8l">bl</td><td class="t8h">bh</td><td class="dimtd">Base — general use, callee-saved everywhere</td></tr>
+        <tr><td class="t64">rcx</td><td class="t32">ecx</td><td class="t16">cx</td><td class="t8l">cl</td><td class="t8h">ch</td><td class="dimtd">Counter — <code>loop</code>, <code>rep</code>, shift counts use <code>cl</code></td></tr>
+        <tr><td class="t64">rdx</td><td class="t32">edx</td><td class="t16">dx</td><td class="t8l">dl</td><td class="t8h">dh</td><td class="dimtd">Data — high half of <code>mul</code>/<code>div</code>, I/O port number</td></tr>
+        <tr><td class="t64">rsi</td><td class="t32">esi</td><td class="t16">si</td><td class="t8l">sil</td><td class="na">—</td><td class="dimtd">Source index — source pointer for string ops</td></tr>
+        <tr><td class="t64">rdi</td><td class="t32">edi</td><td class="t16">di</td><td class="t8l">dil</td><td class="na">—</td><td class="dimtd">Destination index — destination pointer for string ops</td></tr>
+        <tr><td class="t64">rbp</td><td class="t32">ebp</td><td class="t16">bp</td><td class="t8l">bpl</td><td class="na">—</td><td class="dimtd">Base pointer — bottom of the current stack frame</td></tr>
+        <tr><td class="t64">rsp</td><td class="t32">esp</td><td class="t16">sp</td><td class="t8l">spl</td><td class="na">—</td><td class="dimtd">Stack pointer — top of the stack. Never use as a scratch register.</td></tr>
+        <tr><td class="t64">r8</td><td class="t32">r8d</td><td class="t16">r8w</td><td class="t8l">r8b</td><td class="na">—</td><td class="dimtd">Added in 64-bit mode. No historical role.</td></tr>
+        <tr><td class="t64">r9</td><td class="t32">r9d</td><td class="t16">r9w</td><td class="t8l">r9b</td><td class="na">—</td><td class="dimtd">&nbsp;</td></tr>
+        <tr><td class="t64">r10</td><td class="t32">r10d</td><td class="t16">r10w</td><td class="t8l">r10b</td><td class="na">—</td><td class="dimtd">Holds arg 4 in Linux <code>syscall</code> (not <code>rcx</code>)</td></tr>
+        <tr><td class="t64">r11</td><td class="t32">r11d</td><td class="t16">r11w</td><td class="t8l">r11b</td><td class="na">—</td><td class="dimtd">Destroyed by <code>syscall</code> (saved RFLAGS)</td></tr>
+        <tr><td class="t64">r12</td><td class="t32">r12d</td><td class="t16">r12w</td><td class="t8l">r12b</td><td class="na">—</td><td class="dimtd">&nbsp;</td></tr>
+        <tr><td class="t64">r13</td><td class="t32">r13d</td><td class="t16">r13w</td><td class="t8l">r13b</td><td class="na">—</td><td class="dimtd">&nbsp;</td></tr>
+        <tr><td class="t64">r14</td><td class="t32">r14d</td><td class="t16">r14w</td><td class="t8l">r14b</td><td class="na">—</td><td class="dimtd">&nbsp;</td></tr>
+        <tr><td class="t64">r15</td><td class="t32">r15d</td><td class="t16">r15w</td><td class="t8l">r15b</td><td class="na">—</td><td class="dimtd">&nbsp;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid2" style="margin-top:20px">
+    <div class="card">
+      <h4>The zero-extend trap</h4>
+      <p>Writing a <b>32-bit</b> register clears the top 32 bits to zero. Writing a <b>16-bit</b> or <b>8-bit</b> register leaves the upper bits untouched.</p>
+<pre><span class="cm">; rax = 0xFFFFFFFFFFFFFFFF</span>
+<span class="op">mov</span> <span class="rg">eax</span>, 1   <span class="cm">; rax = 0x0000000000000001  &lt;- top half wiped</span>
+<span class="op">mov</span> <span class="rg">ax</span>,  1   <span class="cm">; rax = 0xFFFFFFFFFFFF0001  &lt;- top 48 bits survive</span>
+<span class="op">mov</span> <span class="rg">al</span>,  1   <span class="cm">; rax = 0xFFFFFFFFFFFFFF01  &lt;- top 56 bits survive</span></pre>
+      <p>This is why <code>xor eax, eax</code> is the idiomatic way to zero <code>rax</code>: it is shorter than <code>mov rax, 0</code> and clears all 64 bits anyway.</p>
+    </div>
+    <div class="card">
+      <h4>Where the high byte went</h4>
+      <p><code>ah bh ch dh</code> exist only for the four legacy registers, and only in instructions that need <b>no REX prefix</b>.</p>
+      <ul>
+        <li>You cannot mix <code>ah</code> with <code>sil</code>, <code>dil</code>, <code>spl</code>, <code>bpl</code>, or any <code>r8</code>–<code>r15</code> in the same instruction — the encoding has no room for both.</li>
+        <li><code>sil dil spl bpl</code> only became addressable in 64-bit mode; in 32-bit code the low byte of <code>esi</code> has no name.</li>
+        <li>Assemblers accept <code>r8l</code> as a synonym for <code>r8b</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Registers that are not general purpose</h3>
+  <div class="tbox">
+    <table>
+      <thead><tr><th>Register</th><th>Width</th><th>What it holds</th></tr></thead>
+      <tbody>
+        <tr><td class="mn">rip</td><td class="t64">64</td><td class="dimtd">Instruction pointer — address of the next instruction. You cannot <code>mov</code> it; only <code>jmp</code>/<code>call</code>/<code>ret</code> change it. Readable as <code>[rel label]</code>.</td></tr>
+        <tr><td class="mn">rflags</td><td class="t64">64</td><td class="dimtd">Status flags — see <a href="#flags" style="color:var(--w32)">Flags</a>. Read/written with <code>pushfq</code>/<code>popfq</code>.</td></tr>
+        <tr><td class="mn">cs ds ss es fs gs</td><td class="t16">16</td><td class="dimtd">Segment selectors. Mostly inert in 64-bit mode; <code>fs</code>/<code>gs</code> still base thread-local storage.</td></tr>
+        <tr><td class="mn">xmm0–xmm15</td><td class="t64">128</td><td class="dimtd">SSE — one <code>float</code>/<code>double</code> in the low lane, or 4×32 / 2×64 packed.</td></tr>
+        <tr><td class="mn">ymm0–ymm15</td><td class="t64">256</td><td class="dimtd">AVX — <code>xmm</code><i>n</i> is the low half of <code>ymm</code><i>n</i>, same nesting idea as <code>eax</code> inside <code>rax</code>.</td></tr>
+        <tr><td class="mn">zmm0–zmm31</td><td class="t64">512</td><td class="dimtd">AVX-512, where supported.</td></tr>
+        <tr><td class="mn">st0–st7</td><td class="t16">80</td><td class="dimtd">x87 floating-point stack. Legacy — use SSE for new code.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= ROLES / ABI ================= -->
+<section id="roles">
+  <p class="eyebrow">Who owns what</p>
+  <h2>Calling conventions</h2>
+  <p class="lede">Same 16 registers, two incompatible sets of rules. Linux and macOS use System V; Windows uses its own. <b>Callee-saved</b> means: if your function touches it, push it in the prologue and pop it in the epilogue. <b>Volatile</b> means any <code>call</code> you make may destroy it.</p>
+
+  <div class="tbox">
+    <table>
+      <thead><tr>
+        <th>Register</th><th>System V (Linux / macOS)</th><th></th><th>Microsoft x64 (Windows)</th><th></th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="t64">rax</td><td class="dimtd">Return value · vararg XMM count</td><td><span class="pill vol">volatile</span></td><td class="dimtd">Return value</td><td><span class="pill vol">volatile</span></td></tr>
+        <tr><td class="t64">rdi</td><td class="dimtd">Arg 1</td><td><span class="pill vol">volatile</span></td><td class="dimtd">—</td><td><span class="pill save">callee-saved</span></td></tr>
+        <tr><td class="t64">rsi</td><td class="dimtd">Arg 2</td><td><span class="pill vol">volatile</span></td><td class="dimtd">—</td><td><span class="pill save">callee-saved</span></td></tr>
+        <tr><td class="t64">rdx</td><td class="dimtd">Arg 3 · high half of return</td><td><span class="pill vol">volatile</span></td><td class="dimtd">Arg 2</td><td><span class="pill vol">volatile</span></td></tr>
+        <tr><td class="t64">rcx</td><td class="dimtd">Arg 4</td><td><span class="pill vol">volatile</span></td><td class="dimtd">Arg 1</td><td><span class="pill vol">volatile</span></td></tr>
+        <tr><td class="t64">r8</td><td class="dimtd">Arg 5</td><td><span class="pill vol">volatile</span></td><td class="dimtd">Arg 3</td><td><span class="pill vol">volatile</span></td></tr>
+        <tr><td class="t64">r9</td><td class="dimtd">Arg 6</td><td><span class="pill vol">volatile</span></td><td class="dimtd">Arg 4</td><td><span class="pill vol">volatile</span></td></tr>
+        <tr><td class="t64">r10 r11</td><td class="dimtd">Scratch</td><td><span class="pill vol">volatile</span></td><td class="dimtd">Scratch</td><td><span class="pill vol">volatile</span></td></tr>
+        <tr><td class="t64">rbx rbp<br>r12 r13 r14 r15</td><td class="dimtd">Yours to keep</td><td><span class="pill save">callee-saved</span></td><td class="dimtd">Yours to keep</td><td><span class="pill save">callee-saved</span></td></tr>
+        <tr><td class="t64">rsp</td><td class="dimtd">Stack pointer</td><td><span class="pill save">callee-saved</span></td><td class="dimtd">Stack pointer</td><td><span class="pill save">callee-saved</span></td></tr>
+        <tr><td class="t64">xmm0–7</td><td class="dimtd">Float args 1–8 · <code>xmm0</code> returns</td><td><span class="pill vol">volatile</span></td><td class="dimtd"><code>xmm0–3</code> = float args 1–4</td><td><span class="pill vol">volatile</span> (0–5)</td></tr>
+        <tr><td class="t64">xmm8–15</td><td class="dimtd">Scratch</td><td><span class="pill vol">volatile</span></td><td class="dimtd">—</td><td><span class="pill save">callee-saved</span> (6–15)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid2" style="margin-top:20px">
+    <div class="card">
+      <h4>Argument order, memorised</h4>
+      <p><b>System V:</b> <code>rdi rsi rdx rcx r8 r9</code> — then right-to-left on the stack.<br>
+      <span style="color:var(--dim)">Mnemonic: <i>Diane's Silk Dress Cost $8 9</i>.</span></p>
+      <p><b>Windows:</b> <code>rcx rdx r8 r9</code> — then on the stack, above the shadow space.</p>
+      <p>Floats go in <code>xmm0</code>+ in both. On Windows the integer and float slots are shared by position: a <code>double</code> as arg 2 uses <code>xmm1</code> and <b>skips</b> <code>rdx</code>.</p>
+    </div>
+    <div class="card">
+      <h4>Variadic functions (printf)</h4>
+      <p>On System V, calling a <code>...</code> function requires <code>al</code> = the number of vector registers used. If you pass no floats, it must still be set:</p>
+<pre><span class="op">lea</span>  <span class="rg">rdi</span>, [<span class="lb">rel</span> fmt]
+<span class="op">mov</span>  <span class="rg">rsi</span>, 42
+<span class="op">xor</span>  <span class="rg">eax</span>, <span class="rg">eax</span>      <span class="cm">; al = 0 floats</span>
+<span class="op">call</span> printf <span class="lb">wrt</span> ..plt</pre>
+      <p>Forgetting <code>xor eax, eax</code> is a classic segfault in printf.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CPU vs RAM ================= -->
+<section id="where">
+  <p class="eyebrow">The dividing line</p>
+  <h2>What lives in the CPU, what lives in RAM</h2>
+  <p class="lede">Assembly has no variables in the sense you know from C. It has registers, which are named, and memory, which is addressed. Almost every bug in early assembly comes from confusing the two.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4 style="color:var(--w64)">CPU side — registers</h4>
+      <ul>
+        <li><b>16 GPRs + 16 XMM.</b> That's the whole workspace. Run out and you spill to memory.</li>
+        <li><b>Named, not addressed.</b> <code>rax</code> has no address. You cannot take a pointer to it.</li>
+        <li><b>Sub-latency.</b> Reading a register is free; reading RAM is 4–300 cycles depending on cache.</li>
+        <li><b>Contents die at the next <code>call</code></b> unless the register is callee-saved.</li>
+        <li>Written as a bare name: <code>mov rax, rbx</code>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--w32)">RAM side — memory</h4>
+      <ul>
+        <li><b>Effectively unlimited</b>, addressed by 64-bit pointers.</li>
+        <li><b>Everything with a label</b> in <code>.data</code>, <code>.bss</code>, <code>.rodata</code> is here, plus the stack and the heap.</li>
+        <li><b>Persists</b> across calls — that's what the stack frame is for.</li>
+        <li><b>Needs a size</b> when the assembler cannot infer one: <code>mov qword [rax], 1</code>.</li>
+        <li>Written in brackets: <code>mov rax, [rbx]</code> means <i>load from the address in rbx</i>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Moving between the two</h3>
+  <div class="grid2">
+    <div class="card">
+      <h4>Legal and illegal operand pairs</h4>
+      <ul class="rulelist">
+        <li><span class="ok">✓</span><span><code>mov rax, rbx</code><span class="why"> register ← register</span></span></li>
+        <li><span class="ok">✓</span><span><code>mov rax, [rbx]</code><span class="why"> register ← memory (a load)</span></span></li>
+        <li><span class="ok">✓</span><span><code>mov [rbx], rax</code><span class="why"> memory ← register (a store)</span></span></li>
+        <li><span class="ok">✓</span><span><code>mov rax, 42</code><span class="why"> register ← immediate</span></span></li>
+        <li><span class="ok">✓</span><span><code>mov qword [rbx], 42</code><span class="why"> memory ← immediate, size required</span></span></li>
+        <li><span class="no">✗</span><span><code>mov [rax], [rbx]</code><span class="why"> memory ← memory never encodes. Use two instructions via a register.</span></span></li>
+        <li><span class="no">✗</span><span><code>mov rax, [rbx]</code> with mismatched widths<span class="why"> both operands must be the same size — use <code>movzx</code>/<code>movsx</code> to widen.</span></span></li>
+        <li><span class="no">✗</span><span><code>mov rax, 0x1122334455667788</code> into memory<span class="why"> 64-bit immediates only go into registers; <code>mov r64, imm64</code> is fine, <code>mov [mem], imm64</code> is not.</span></span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Effective address — the one formula</h4>
+<pre>[ base + index*scale + displacement ]
+
+base   : any 64-bit register
+index  : any 64-bit register except rsp
+scale  : 1, 2, 4 or 8   <span class="cm">(element size)</span>
+disp   : signed 32-bit constant</pre>
+      <p>Every memory operand in x86-64 is some subset of that. Examples:</p>
+<pre><span class="op">mov</span> <span class="rg">al</span>,  [<span class="rg">rsi</span>]              <span class="cm">; *ptr</span>
+<span class="op">mov</span> <span class="rg">eax</span>, [<span class="rg">rsi</span> + 4]          <span class="cm">; ptr[1] of int32</span>
+<span class="op">mov</span> <span class="rg">eax</span>, [<span class="rg">rsi</span> + <span class="rg">rcx</span>*4]      <span class="cm">; arr[i], int32</span>
+<span class="op">mov</span> <span class="rg">rax</span>, [<span class="rg">rbp</span> - 8]          <span class="cm">; a local variable</span>
+<span class="op">mov</span> <span class="rg">rax</span>, [<span class="lb">rel</span> counter]      <span class="cm">; a global, RIP-relative</span></pre>
+      <p><b>LEA does the arithmetic without touching memory:</b> <code>lea rax, [rsi + rcx*4]</code> puts the <i>address</i> in <code>rax</code>. It is also the fastest way to compute <code>rax = rsi + rcx*4</code> in general.</p>
+    </div>
+  </div>
+
+  <h3>The memory map of a running program</h3>
+  <div class="memmap">
+    <div class="mrow"><div class="k">high addr</div><div class="v"><b>stack</b> <span>— locals, saved registers, return addresses. Grows <b>downward</b> toward lower addresses.</span></div></div>
+    <div class="mrow"><div class="k">↓ ↑</div><div class="v"><b>free gap</b> <span>— shared memory and mapped libraries land in here.</span></div></div>
+    <div class="mrow"><div class="k">&nbsp;</div><div class="v"><b>heap</b> <span>— <code>malloc</code> / <code>brk</code> / <code>mmap</code>. Grows upward.</span></div></div>
+    <div class="mrow"><div class="k">.bss</div><div class="v"><b>uninitialised data</b> <span>— NASM <code>resb/resw/resd/resq</code>. Takes no space in the file, zero-filled at load.</span></div></div>
+    <div class="mrow"><div class="k">.data</div><div class="v"><b>initialised, writable</b> <span>— NASM <code>db/dw/dd/dq</code> with real values.</span></div></div>
+    <div class="mrow"><div class="k">.rodata</div><div class="v"><b>read-only constants</b> <span>— string literals live here. Writing to one faults.</span></div></div>
+    <div class="mrow"><div class="k">low addr</div><div class="v"><b>.text</b> <span>— the machine code itself. Executable, not writable.</span></div></div>
+  </div>
+</section>
+
+<!-- ================= SIZES ================= -->
+<section id="sizes">
+  <p class="eyebrow">Declaring data</p>
+  <h2>Sizes, directives and ranges</h2>
+  <p class="lede">The same five widths run through the whole language: the size keyword in an operand, the directive that reserves the storage, and the register you load it into all have to agree.</p>
+
+  <div class="tbox">
+    <table>
+      <thead><tr>
+        <th>Size</th><th>Bits</th><th>NASM define</th><th>NASM reserve</th><th>GAS</th><th>C type</th><th>Register</th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="t8l">byte</td><td>8</td><td class="m"><b>db</b></td><td class="m">resb</td><td class="m">.byte</td><td class="dimtd">char, bool, uint8_t</td><td class="t8l">al</td></tr>
+        <tr><td class="t16">word</td><td>16</td><td class="m"><b>dw</b></td><td class="m">resw</td><td class="m">.word / .short</td><td class="dimtd">short, uint16_t</td><td class="t16">ax</td></tr>
+        <tr><td class="t32">dword</td><td>32</td><td class="m"><b>dd</b></td><td class="m">resd</td><td class="m">.long / .int</td><td class="dimtd">int, float, uint32_t</td><td class="t32">eax</td></tr>
+        <tr><td class="t64">qword</td><td>64</td><td class="m"><b>dq</b></td><td class="m">resq</td><td class="m">.quad</td><td class="dimtd">long, double, any pointer</td><td class="t64">rax</td></tr>
+        <tr><td class="dimtd m">tword</td><td>80</td><td class="m">dt</td><td class="m">rest</td><td class="m">.tfloat</td><td class="dimtd">long double (x87)</td><td class="dimtd m">st0</td></tr>
+        <tr><td class="dimtd m">oword / xmmword</td><td>128</td><td class="m">do</td><td class="m">reso</td><td class="m">.octa</td><td class="dimtd">__m128</td><td class="dimtd m">xmm0</td></tr>
+        <tr><td class="dimtd m">yword</td><td>256</td><td class="m">dy</td><td class="m">resy</td><td class="m">—</td><td class="dimtd">__m256</td><td class="dimtd m">ymm0</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Value ranges</h3>
+  <div class="tbox">
+    <table>
+      <thead><tr><th>Width</th><th>Unsigned</th><th>Signed (two's complement)</th><th>Hex mask</th></tr></thead>
+      <tbody>
+        <tr><td class="t8l">8</td><td class="m">0 … 255</td><td class="m">−128 … 127</td><td class="m dimtd">0xFF</td></tr>
+        <tr><td class="t16">16</td><td class="m">0 … 65,535</td><td class="m">−32,768 … 32,767</td><td class="m dimtd">0xFFFF</td></tr>
+        <tr><td class="t32">32</td><td class="m">0 … 4,294,967,295</td><td class="m">−2,147,483,648 … 2,147,483,647</td><td class="m dimtd">0xFFFFFFFF</td></tr>
+        <tr><td class="t64">64</td><td class="m">0 … 18,446,744,073,709,551,615</td><td class="m">−9,223,372,036,854,775,808 … 9,223,372,036,854,775,807</td><td class="m dimtd">0xFFFFFFFFFFFFFFFF</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid2" style="margin-top:20px">
+    <div class="card">
+      <h4>Declaring data — NASM</h4>
+<pre><span class="lb">section</span> .data
+    msg     <span class="op">db</span>  "Hello", 10, 0   <span class="cm">; bytes + newline + NUL</span>
+    count   <span class="op">dq</span>  0
+    pi      <span class="op">dq</span>  3.14159          <span class="cm">; double</span>
+    ratio   <span class="op">dd</span>  1.5              <span class="cm">; float</span>
+    arr     <span class="op">dd</span>  1, 2, 3, 4       <span class="cm">; 4 dwords = 16 bytes</span>
+    zeros   <span class="op">times</span> 64 <span class="op">db</span> 0        <span class="cm">; repeat</span>
+    LEN     <span class="op">equ</span> $ - msg          <span class="cm">; assemble-time constant</span>
+
+<span class="lb">section</span> .bss
+    buffer  <span class="op">resb</span> 256              <span class="cm">; 256 zeroed bytes</span>
+    total   <span class="op">resq</span> 1                <span class="cm">; one qword</span>
+    <span class="op">align</span> 16                     <span class="cm">; pad to 16-byte boundary</span></pre>
+    </div>
+    <div class="card">
+      <h4>Widening and narrowing</h4>
+      <p>Loading a small value into a big register is never a plain <code>mov</code>.</p>
+<pre><span class="op">movzx</span> <span class="rg">eax</span>, <span class="rg">byte</span> [buf]   <span class="cm">; unsigned byte -> 32-bit</span>
+<span class="op">movzx</span> <span class="rg">rax</span>, <span class="rg">word</span> [buf]   <span class="cm">; unsigned word -> 64-bit</span>
+<span class="op">movsx</span> <span class="rg">rax</span>, <span class="rg">byte</span> [buf]   <span class="cm">; signed   byte -> 64-bit</span>
+<span class="op">movsxd</span> <span class="rg">rax</span>, <span class="rg">eax</span>         <span class="cm">; signed  dword -> 64-bit</span>
+<span class="op">mov</span>   <span class="rg">eax</span>, <span class="rg">eax</span>           <span class="cm">; unsigned dword -> 64-bit (free)</span></pre>
+      <p>Narrowing needs nothing — just use the smaller name: <code>mov [buf], al</code>.</p>
+      <p><b>Alignment:</b> keep an <i>N</i>-byte value on an <i>N</i>-byte boundary. Misaligned works on x86 but costs cycles, and SSE <code>movaps</code> faults outright — that one needs 16.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= STACK ================= -->
+<section id="stack">
+  <p class="eyebrow">Frames</p>
+  <h2>The stack and how to size <code style="font-size:.86em">sub rsp, N</code></h2>
+  <p class="lede">The stack grows <b>downward</b>. <code>push</code> subtracts 8 from <code>rsp</code> then writes; <code>pop</code> reads then adds 8. <code>rsp</code> always points at the last thing pushed — the lowest used address, not free space.</p>
+
+  <div class="grid2">
+    <div>
+      <h3 style="margin-top:0">Layout of one frame</h3>
+      <div class="stack">
+        <div class="srow"><div class="sl">… caller's frame …</div><div class="sr">higher addresses</div></div>
+        <div class="srow"><div class="sl">stack arg 7, 8, … <span style="color:var(--dimmer)">(SysV)</span></div><div class="sr">rbp + 24, +16</div></div>
+        <div class="srow mark"><div class="sl">return address</div><div class="sr">rbp + 8</div></div>
+        <div class="srow hi"><div class="sl">saved rbp</div><div class="sr">← rbp</div></div>
+        <div class="srow"><div class="sl">saved rbx / r12–r15</div><div class="sr">rbp − 8, −16 …</div></div>
+        <div class="srow"><div class="sl">local variables</div><div class="sr">rbp − 24 …</div></div>
+        <div class="srow"><div class="sl">alignment padding</div><div class="sr">&nbsp;</div></div>
+        <div class="srow mark2"><div class="sl">outgoing stack args / shadow space</div><div class="sr">rsp + 0 …</div></div>
+        <div class="srow hi"><div class="sl">← rsp points here</div><div class="sr">lower addresses</div></div>
+      </div>
+      <p style="font-size:13px;color:var(--dim);margin-top:14px">With a frame pointer, locals are addressed from <code>rbp</code> (stable) and outgoing arguments from <code>rsp</code> (moves). Optimised code drops <code>rbp</code> and indexes everything from <code>rsp</code>.</p>
+    </div>
+
+    <div>
+      <h3 style="margin-top:0">The three rules</h3>
+      <div class="card" style="margin-bottom:14px">
+        <h4>1 · 16-byte alignment</h4>
+        <p><code>rsp</code> must be a multiple of 16 <b>at the moment a <code>call</code> executes</b>. The <code>call</code> then pushes 8 bytes of return address, so on entry to any function <code>rsp % 16 == 8</code>.</p>
+        <p>That gives the rule you actually use: <b>after your prologue, <code>rsp</code> must be back to a multiple of 16.</b> Break it and SSE code inside <code>printf</code> or <code>malloc</code> will segfault.</p>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <h4>2 · Shadow space — Windows only</h4>
+        <p>Before <b>every</b> call on Windows x64, the caller must reserve <b>32 bytes</b> above the return address, even when the function takes no arguments. The callee owns that space and may spill <code>rcx rdx r8 r9</code> into it.</p>
+        <p>This is the "always 32" rule. It does not exist on Linux or macOS.</p>
+      </div>
+      <div class="card">
+        <h4>3 · Red zone — System V only</h4>
+        <p>A <b>leaf</b> function (one that calls nothing) may freely use the 128 bytes <i>below</i> <code>rsp</code> without reserving them. No <code>sub rsp</code> needed at all.</p>
+        <p>Not available on Windows, and not inside interrupt/signal handlers.</p>
+      </div>
+    </div>
+  </div>
+
+  <h3>Calculate your prologue</h3>
+  <div class="grid2">
+    <div class="calc">
+      <div class="crow">
+        <div class="field">
+          <label for="abi">Platform</label>
+          <select id="abi">
+            <option value="sysv">System V — Linux / macOS</option>
+            <option value="win">Microsoft x64 — Windows</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="locals">Bytes of local variables</label>
+          <input id="locals" type="number" min="0" step="1" value="24">
+        </div>
+      </div>
+      <div class="crow">
+        <div class="field">
+          <label for="pushes">Callee-saved registers pushed</label>
+          <input id="pushes" type="number" min="0" max="6" step="1" value="1">
+        </div>
+        <div class="field">
+          <label for="maxargs">Most arguments in any call you make</label>
+          <input id="maxargs" type="number" min="0" max="16" step="1" value="3">
+        </div>
+      </div>
+      <label class="check" style="padding-top:0">
+        <input type="checkbox" id="leaf"> This is a leaf function — it calls nothing
+      </label>
+    </div>
+
+    <div class="calcout">
+      <div id="calcwarn"></div>
+      <ul class="breakdown" id="breakdown"></ul>
+      <pre id="calccode"></pre>
+    </div>
+  </div>
+
+  <p style="font-size:13px;color:var(--dim);margin-top:6px"><b>The parity rule behind the arithmetic:</b> entry leaves <code>rsp % 16 == 8</code>, and each <code>push</code> removes another 8. So with an <b>even</b> number of pushes your <code>N</code> must be ≡ 8 (mod 16); with an <b>odd</b> number of pushes, <code>N</code> must be a multiple of 16. Counting <code>push rbp</code>, the everyday case "<code>push rbp</code> + locals" lands on a multiple of 16.</p>
+
+  <h3>Parameter homing — reading MSVC / MASM output</h3>
+  <p class="lede">A Windows compiler at <code>/Od</code> starts almost every function by storing its register arguments into the shadow space. Those stores come <b>before</b> <code>sub rsp</code>, and that ordering is what makes the offsets look inconsistent.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>What the caller left you</h4>
+      <p>At the first instruction of a function, before you touch <code>rsp</code>:</p>
+<pre>rsp+32  [ home slot 4 ]  <span class="cm">&lt;- reserved for r9</span>
+rsp+24  [ home slot 3 ]  <span class="cm">&lt;- reserved for r8 </span>
+rsp+16  [ home slot 2 ]  <span class="cm">&lt;- reserved for rdx</span>
+rsp+8   [ home slot 1 ]  <span class="cm">&lt;- reserved for rcx</span>
+rsp+0   [ return address ]  <span class="cm">&lt;- rsp</span></pre>
+      <p>The 32 bytes belong to the caller's frame but are <b>owned by the callee</b>. Homing is the callee spilling its arguments into them so every parameter has a real address:</p>
+<pre><span class="op">mov</span> <span class="rg">DWORD PTR</span> [<span class="rg">rsp</span>+24], <span class="rg">r8d</span>   <span class="cm">; arg 3</span>
+<span class="op">mov</span> <span class="rg">DWORD PTR</span> [<span class="rg">rsp</span>+16], <span class="rg">edx</span>   <span class="cm">; arg 2</span>
+<span class="op">mov</span> <span class="rg">DWORD PTR</span> [<span class="rg">rsp</span>+8],  <span class="rg">ecx</span>   <span class="cm">; arg 1</span>
+<span class="op">sub</span> <span class="rg">rsp</span>, 56                    <span class="cm">; frame opens AFTER homing</span></pre>
+      <p>The stores must come first because <code>+8/+16/+24</code> are only correct while <code>rsp</code> still holds its entry value. Optimised builds usually skip homing and keep arguments in registers.</p>
+    </div>
+    <div class="card">
+      <h4><code>name$ = N</code> is an offset from the <i>post-</i><code>sub</code> rsp</h4>
+      <p>MASM writes <code>num1$[rsp]</code> to mean <code>[rsp + num1$]</code>. Subtract the frame size to see what each symbol really points at — for a function with <code>sub rsp, 56</code>:</p>
+      <div class="tbox" style="background:var(--bg2)">
+        <table style="min-width:0">
+          <thead><tr><th>Symbol</th><th>After sub</th><th>−56</th><th>Really is</th></tr></thead>
+          <tbody>
+            <tr><td class="mn">step1$ = 32</td><td class="m dimtd">rsp+32</td><td class="t8h">−24</td><td class="dimtd">a local, inside the new frame</td></tr>
+            <tr><td class="mn">num1$ = 64</td><td class="m dimtd">rsp+64</td><td class="t8l">+8</td><td class="dimtd">home slot 1 (from <code>ecx</code>)</td></tr>
+            <tr><td class="mn">num2$ = 72</td><td class="m dimtd">rsp+72</td><td class="t8l">+16</td><td class="dimtd">home slot 2 (from <code>edx</code>)</td></tr>
+            <tr><td class="mn">num3$ = 80</td><td class="m dimtd">rsp+80</td><td class="t8l">+24</td><td class="dimtd">home slot 3 (from <code>r8d</code>)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px">Anything ≥ the frame size is a <b>parameter</b> above the return address. Anything below it is a <b>local</b>. So <code>mov eax, num2$[rsp]</code> is just reading back the byte homed a moment earlier.</p>
+      <p>Where that 56 comes from: <code>32</code> shadow space <span style="color:var(--dimmer)">+</span> a locals block of <code>16</code> <span style="color:var(--dimmer)">+</span> <code>8</code> for alignment. The <code>int step1</code> inside that block is only <b>4</b> bytes (<code>rsp+32 … rsp+35</code>) — MSVC at <code>/Od</code> rounds the locals block up to 16, then adds 8 because with no pushes <code>N</code> must be ≡ 8 (mod 16). Don't read a frame size as a sum of variable sizes: it is <b>minimum needed, rounded twice</b>.</p>
+      <p><b>Leaf functions get neither.</b> A function that calls nothing emits no <code>sub rsp</code>, so its symbols stay small: <code>num$ = 8</code> is home slot 1, unshifted. <code>$LN3:</code> is just an end-of-prologue label and generates no code.</p>
+    </div>
+  </div>
+
+  <h3>Stack instructions</h3>
+  <div class="tbox">
+    <table>
+      <thead><tr><th>Instruction</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td class="mn">push src</td><td class="dimtd"><code>rsp -= 8</code>, then <code>[rsp] = src</code>. 64-bit operands only in long mode.</td></tr>
+        <tr><td class="mn">pop dst</td><td class="dimtd"><code>dst = [rsp]</code>, then <code>rsp += 8</code>.</td></tr>
+        <tr><td class="mn">call target</td><td class="dimtd">Pushes the address of the next instruction, then jumps.</td></tr>
+        <tr><td class="mn">ret</td><td class="dimtd">Pops the return address into <code>rip</code>. Requires <code>rsp</code> to be exactly where it was on entry.</td></tr>
+        <tr><td class="mn">leave</td><td class="dimtd">Shorthand for <code>mov rsp, rbp</code> + <code>pop rbp</code>.</td></tr>
+        <tr><td class="mn">enter n, 0</td><td class="dimtd">Shorthand for <code>push rbp</code> + <code>mov rbp, rsp</code> + <code>sub rsp, n</code>. Slow — rarely used.</td></tr>
+        <tr><td class="mn">pushfq / popfq</td><td class="dimtd">Push / pop <code>rflags</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= INSTRUCTIONS ================= -->
+<section id="instructions">
+  <p class="eyebrow">Reference</p>
+  <h2>Instruction set</h2>
+  <p class="lede">Intel order throughout: <code>op destination, source</code>. In AT&amp;T/GAS syntax the operands are reversed and registers take a <code>%</code>, immediates a <code>$</code>.</p>
+
+  <div class="search">
+    <span style="color:var(--dimmer);font-family:var(--mono);font-size:13px">/</span>
+    <input id="q" type="search" placeholder="filter instructions — try “shift”, “jump”, “imul”" autocomplete="off" aria-label="Filter instructions">
+    <span class="cnt" id="cnt"></span>
+  </div>
+
+  <div id="itables">
+
+    <h3 data-group>Data movement</h3>
+    <div class="tbox" data-group>
+      <table>
+        <thead><tr><th style="width:200px">Instruction</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="mn">mov d, s</td><td class="dimtd">Copy. Operands must be the same width. No memory-to-memory.</td></tr>
+          <tr><td class="mn">movzx d, s</td><td class="dimtd">Copy smaller into larger, filling with zeros.</td></tr>
+          <tr><td class="mn">movsx d, s</td><td class="dimtd">Copy smaller into larger, replicating the sign bit.</td></tr>
+          <tr><td class="mn">movsxd r64, r/m32</td><td class="dimtd">Sign-extend 32 bits to 64.</td></tr>
+          <tr><td class="mn">lea d, [expr]</td><td class="dimtd">Load effective address — computes the address, reads no memory. Doubles as fast arithmetic.</td></tr>
+          <tr><td class="mn">xchg a, b</td><td class="dimtd">Swap. With a memory operand it is implicitly <code>lock</code>ed and slow.</td></tr>
+          <tr><td class="mn">cmovcc d, s</td><td class="dimtd">Move only if the condition holds — a branch without a branch. e.g. <code>cmovg</code>, <code>cmovz</code>.</td></tr>
+          <tr><td class="mn">xlatb</td><td class="dimtd"><code>al = [rbx + al]</code> — table lookup.</td></tr>
+          <tr><td class="mn">bswap r</td><td class="dimtd">Reverse byte order — endianness conversion.</td></tr>
+          <tr><td class="mn">cbw / cwde / cdqe</td><td class="dimtd">Sign-extend in place: <code>al→ax</code>, <code>ax→eax</code>, <code>eax→rax</code>.</td></tr>
+          <tr><td class="mn">cwd / cdq / cqo</td><td class="dimtd">Sign-extend into the high register: <code>ax→dx:ax</code>, <code>eax→edx:eax</code>, <code>rax→rdx:rax</code>. Required before <code>idiv</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 data-group>Arithmetic</h3>
+    <div class="tbox" data-group>
+      <table>
+        <thead><tr><th style="width:200px">Instruction</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="mn">add d, s</td><td class="dimtd"><code>d += s</code>. Sets CF, OF, SF, ZF, PF, AF.</td></tr>
+          <tr><td class="mn">sub d, s</td><td class="dimtd"><code>d -= s</code>.</td></tr>
+          <tr><td class="mn">adc d, s</td><td class="dimtd"><code>d += s + CF</code> — chaining wider-than-64-bit addition.</td></tr>
+          <tr><td class="mn">sbb d, s</td><td class="dimtd"><code>d -= s + CF</code>.</td></tr>
+          <tr><td class="mn">inc d / dec d</td><td class="dimtd">±1. Note: does <b>not</b> touch CF, unlike <code>add d,1</code>.</td></tr>
+          <tr><td class="mn">neg d</td><td class="dimtd">Two's-complement negate: <code>d = 0 - d</code>.</td></tr>
+          <tr><td class="mn">mul s</td><td class="dimtd">Unsigned. <code>rdx:rax = rax * s</code>. One operand only; the other is implicit.</td></tr>
+          <tr><td class="mn">imul s</td><td class="dimtd">Signed, same implicit form as <code>mul</code>.</td></tr>
+          <tr><td class="mn">imul d, s</td><td class="dimtd">Signed two-operand: <code>d *= s</code>, result truncated to operand size.</td></tr>
+          <tr><td class="mn">imul d, s, imm</td><td class="dimtd">Signed three-operand: <code>d = s * imm</code>.</td></tr>
+          <tr><td class="mn">div s</td><td class="dimtd">Unsigned. Divides <code>rdx:rax</code> by <code>s</code> → quotient in <code>rax</code>, remainder in <code>rdx</code>. <b>Zero <code>rdx</code> first</b> or you fault.</td></tr>
+          <tr><td class="mn">idiv s</td><td class="dimtd">Signed divide. Sign-extend with <code>cqo</code> first, not <code>xor rdx,rdx</code>.</td></tr>
+          <tr><td class="mn">cmp a, b</td><td class="dimtd">Computes <code>a - b</code>, sets flags, discards the result.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 data-group>Logic and bits</h3>
+    <div class="tbox" data-group>
+      <table>
+        <thead><tr><th style="width:200px">Instruction</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="mn">and d, s</td><td class="dimtd">Bitwise AND. Clears CF and OF. Used to mask bits.</td></tr>
+          <tr><td class="mn">or d, s</td><td class="dimtd">Bitwise OR — set bits.</td></tr>
+          <tr><td class="mn">xor d, s</td><td class="dimtd">Bitwise XOR — toggle bits. <code>xor eax, eax</code> is the idiomatic zero.</td></tr>
+          <tr><td class="mn">not d</td><td class="dimtd">Bitwise complement. Affects no flags.</td></tr>
+          <tr><td class="mn">test a, b</td><td class="dimtd">ANDs and sets flags without storing. <code>test rax, rax</code> then <code>jz</code> = "is it zero?".</td></tr>
+          <tr><td class="mn">shl / sal d, n</td><td class="dimtd">Shift left, zeros in — multiply by 2ⁿ. Count is an immediate or <code>cl</code>.</td></tr>
+          <tr><td class="mn">shr d, n</td><td class="dimtd">Logical shift right, zeros in — unsigned divide by 2ⁿ.</td></tr>
+          <tr><td class="mn">sar d, n</td><td class="dimtd">Arithmetic shift right, sign bit in — signed divide by 2ⁿ (rounds toward −∞).</td></tr>
+          <tr><td class="mn">rol / ror d, n</td><td class="dimtd">Rotate left / right.</td></tr>
+          <tr><td class="mn">rcl / rcr d, n</td><td class="dimtd">Rotate through the carry flag.</td></tr>
+          <tr><td class="mn">shld / shrd d, s, n</td><td class="dimtd">Double-precision shift — shifts bits of <code>s</code> into <code>d</code>.</td></tr>
+          <tr><td class="mn">bt / bts / btr / btc</td><td class="dimtd">Bit test / test-and-set / test-and-reset / test-and-complement. Copies the bit into CF.</td></tr>
+          <tr><td class="mn">bsf / bsr d, s</td><td class="dimtd">Bit scan forward / reverse — index of the lowest / highest set bit.</td></tr>
+          <tr><td class="mn">popcnt d, s</td><td class="dimtd">Count set bits.</td></tr>
+          <tr><td class="mn">tzcnt / lzcnt d, s</td><td class="dimtd">Count trailing / leading zeros. Well-defined for a zero input, unlike <code>bsf</code>/<code>bsr</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 data-group>Control flow</h3>
+    <div class="tbox" data-group>
+      <table>
+        <thead><tr><th style="width:200px">Instruction</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="mn">jmp target</td><td class="dimtd">Unconditional jump. Target may be a label, a register, or memory.</td></tr>
+          <tr><td class="mn">jcc target</td><td class="dimtd">Conditional jump — the full table is in <a href="#flags" style="color:var(--w32)">Flags &amp; Jumps</a>.</td></tr>
+          <tr><td class="mn">call target</td><td class="dimtd">Push return address, jump.</td></tr>
+          <tr><td class="mn">ret / ret imm</td><td class="dimtd">Return; the immediate form also pops <i>imm</i> bytes of arguments.</td></tr>
+          <tr><td class="mn">loop label</td><td class="dimtd"><code>rcx--</code>, jump if <code>rcx != 0</code>. Slower than <code>dec</code>+<code>jnz</code> on modern CPUs.</td></tr>
+          <tr><td class="mn">loope / loopne</td><td class="dimtd">Same, additionally requiring ZF set / clear.</td></tr>
+          <tr><td class="mn">jrcxz label</td><td class="dimtd">Jump if <code>rcx</code> is zero, without touching flags.</td></tr>
+          <tr><td class="mn">setcc d8</td><td class="dimtd">Set a byte to 1 or 0 based on the condition — branchless booleans.</td></tr>
+          <tr><td class="mn">nop</td><td class="dimtd">Do nothing; used for alignment padding.</td></tr>
+          <tr><td class="mn">ud2</td><td class="dimtd">Guaranteed invalid opcode — deliberate crash / unreachable marker.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 data-group>String and block operations</h3>
+    <div class="tbox" data-group>
+      <table>
+        <thead><tr><th style="width:200px">Instruction</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="mn">movsb/w/d/q</td><td class="dimtd">Copy <code>[rsi]</code> → <code>[rdi]</code>, then advance both by the element size.</td></tr>
+          <tr><td class="mn">stosb/w/d/q</td><td class="dimtd">Store <code>al/ax/eax/rax</code> to <code>[rdi]</code> and advance — the memset primitive.</td></tr>
+          <tr><td class="mn">lodsb/w/d/q</td><td class="dimtd">Load <code>[rsi]</code> into <code>al/ax/eax/rax</code> and advance.</td></tr>
+          <tr><td class="mn">scasb/w/d/q</td><td class="dimtd">Compare <code>al/…</code> with <code>[rdi]</code> and advance — the strlen primitive.</td></tr>
+          <tr><td class="mn">cmpsb/w/d/q</td><td class="dimtd">Compare <code>[rsi]</code> with <code>[rdi]</code> and advance — the memcmp primitive.</td></tr>
+          <tr><td class="mn">rep</td><td class="dimtd">Repeat <code>rcx</code> times. Prefix for <code>movs</code>/<code>stos</code>.</td></tr>
+          <tr><td class="mn">repe / repz</td><td class="dimtd">Repeat while equal and <code>rcx != 0</code>. For <code>cmps</code>/<code>scas</code>.</td></tr>
+          <tr><td class="mn">repne / repnz</td><td class="dimtd">Repeat while not equal and <code>rcx != 0</code>.</td></tr>
+          <tr><td class="mn">cld / std</td><td class="dimtd">Clear / set DF — choose forward (increment) or backward (decrement). The ABI requires DF clear on entry and exit.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 data-group>Floating point — SSE</h3>
+    <div class="tbox" data-group>
+      <table>
+        <thead><tr><th style="width:200px">Instruction</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="mn">movss / movsd</td><td class="dimtd">Move one scalar float / double. (<code>movsd</code> as an SSE instruction is unrelated to the string <code>movsd</code>.)</td></tr>
+          <tr><td class="mn">movaps / movapd</td><td class="dimtd">Move 128 bits, <b>requires 16-byte alignment</b>.</td></tr>
+          <tr><td class="mn">movups / movupd</td><td class="dimtd">Same, unaligned-safe.</td></tr>
+          <tr><td class="mn">movdqa / movdqu</td><td class="dimtd">Move 128 bits of integer data, aligned / unaligned.</td></tr>
+          <tr><td class="mn">addss addsd subss subsd</td><td class="dimtd">Scalar add / subtract, single / double.</td></tr>
+          <tr><td class="mn">mulss mulsd divss divsd</td><td class="dimtd">Scalar multiply / divide.</td></tr>
+          <tr><td class="mn">sqrtss / sqrtsd</td><td class="dimtd">Square root.</td></tr>
+          <tr><td class="mn">cvtsi2sd / cvtsi2ss</td><td class="dimtd">Integer → floating point.</td></tr>
+          <tr><td class="mn">cvttsd2si / cvttss2si</td><td class="dimtd">Floating point → integer, truncating. The single-<code>t</code> forms round instead.</td></tr>
+          <tr><td class="mn">cvtss2sd / cvtsd2ss</td><td class="dimtd">float ↔ double.</td></tr>
+          <tr><td class="mn">ucomiss / ucomisd</td><td class="dimtd">Compare scalars and set ZF/PF/CF. Test with the <b>unsigned</b> conditions (<code>ja</code>, <code>jb</code>), and check PF for NaN.</td></tr>
+          <tr><td class="mn">xorps d, d / pxor d, d</td><td class="dimtd">Zero an XMM register.</td></tr>
+          <tr><td class="mn">addps / mulps / …</td><td class="dimtd">The <code>p</code> forms operate on all packed lanes at once instead of one scalar.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 data-group>System and misc</h3>
+    <div class="tbox" data-group>
+      <table>
+        <thead><tr><th style="width:200px">Instruction</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="mn">syscall</td><td class="dimtd">Enter the kernel (64-bit Linux). Clobbers <code>rcx</code> and <code>r11</code>.</td></tr>
+          <tr><td class="mn">int 0x80</td><td class="dimtd">Legacy 32-bit Linux system call. Different call numbers — do not mix the two tables.</td></tr>
+          <tr><td class="mn">cpuid</td><td class="dimtd">Query CPU features; input in <code>eax</code>, results across <code>eax ebx ecx edx</code>.</td></tr>
+          <tr><td class="mn">rdtsc</td><td class="dimtd">Read the timestamp counter into <code>edx:eax</code>.</td></tr>
+          <tr><td class="mn">lock <i>prefix</i></td><td class="dimtd">Make the following read-modify-write atomic.</td></tr>
+          <tr><td class="mn">cmpxchg d, s</td><td class="dimtd">Compare <code>rax</code> with <code>d</code>; if equal store <code>s</code>, else load <code>d</code> into <code>rax</code>. The basis of every lock-free algorithm.</td></tr>
+          <tr><td class="mn">xadd d, s</td><td class="dimtd">Exchange then add — atomic fetch-and-add with <code>lock</code>.</td></tr>
+          <tr><td class="mn">mfence / sfence / lfence</td><td class="dimtd">Memory ordering barriers.</td></tr>
+          <tr><td class="mn">hlt</td><td class="dimtd">Halt until the next interrupt. Privileged.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+  <div class="nores" id="nores">No instruction matches that.</div>
+</section>
+
+<!-- ================= FLAGS ================= -->
+<section id="flags">
+  <p class="eyebrow">Conditions</p>
+  <h2>RFLAGS and the jump table</h2>
+  <p class="lede">Arithmetic writes flags; conditional jumps read them. The only thing you have to memorise: <b>above/below</b> means unsigned, <b>greater/less</b> means signed. Choosing the wrong family is the most common comparison bug in assembly.</p>
+
+  <div class="grid2">
+    <div class="tbox">
+      <table>
+        <thead><tr><th>Flag</th><th>Bit</th><th>Set when</th></tr></thead>
+        <tbody>
+          <tr><td class="mn">CF</td><td class="dimtd">0</td><td class="dimtd">Carry — unsigned overflow out of the top bit</td></tr>
+          <tr><td class="mn">PF</td><td class="dimtd">2</td><td class="dimtd">Parity — low byte has an even number of set bits</td></tr>
+          <tr><td class="mn">AF</td><td class="dimtd">4</td><td class="dimtd">Adjust — carry out of bit 3, for BCD</td></tr>
+          <tr><td class="mn">ZF</td><td class="dimtd">6</td><td class="dimtd">Zero — the result was 0</td></tr>
+          <tr><td class="mn">SF</td><td class="dimtd">7</td><td class="dimtd">Sign — the top bit of the result is 1</td></tr>
+          <tr><td class="mn">TF</td><td class="dimtd">8</td><td class="dimtd">Trap — single-step for debuggers</td></tr>
+          <tr><td class="mn">IF</td><td class="dimtd">9</td><td class="dimtd">Interrupt enable</td></tr>
+          <tr><td class="mn">DF</td><td class="dimtd">10</td><td class="dimtd">Direction — string ops go backward when set</td></tr>
+          <tr><td class="mn">OF</td><td class="dimtd">11</td><td class="dimtd">Overflow — signed overflow</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h4>Reading a comparison</h4>
+      <p><code>cmp rax, rbx</code> computes <code>rax - rbx</code> and throws the result away. Read the jump that follows as a sentence about the <b>first</b> operand:</p>
+<pre><span class="op">cmp</span> <span class="rg">rax</span>, <span class="rg">rbx</span>
+<span class="op">jg</span>  bigger      <span class="cm">; signed:   rax &gt;  rbx</span>
+<span class="op">ja</span>  bigger      <span class="cm">; unsigned: rax &gt;  rbx</span></pre>
+      <p><b>Signed:</b> <code>jg jge jl jle</code> — greater, less.<br>
+         <b>Unsigned:</b> <code>ja jae jb jbe</code> — above, below.<br>
+         <b>Either:</b> <code>je jne</code> — equality has no sign.</p>
+      <p>Pointer and size comparisons are unsigned. Loop counters over signed <code>int</code> are signed.</p>
+    </div>
+  </div>
+
+  <h3>Every conditional jump</h3>
+  <div class="tbox">
+    <table>
+      <thead><tr><th>Mnemonic</th><th>Synonyms</th><th>Jumps when</th><th>Condition</th></tr></thead>
+      <tbody>
+        <tr><td class="mn">je</td><td class="m dimtd">jz</td><td class="dimtd">equal / zero</td><td class="m dimtd">ZF = 1</td></tr>
+        <tr><td class="mn">jne</td><td class="m dimtd">jnz</td><td class="dimtd">not equal</td><td class="m dimtd">ZF = 0</td></tr>
+        <tr><td class="mn">jg</td><td class="m dimtd">jnle</td><td class="dimtd"><b style="color:var(--w64)">signed</b> &gt;</td><td class="m dimtd">ZF = 0 and SF = OF</td></tr>
+        <tr><td class="mn">jge</td><td class="m dimtd">jnl</td><td class="dimtd"><b style="color:var(--w64)">signed</b> ≥</td><td class="m dimtd">SF = OF</td></tr>
+        <tr><td class="mn">jl</td><td class="m dimtd">jnge</td><td class="dimtd"><b style="color:var(--w64)">signed</b> &lt;</td><td class="m dimtd">SF ≠ OF</td></tr>
+        <tr><td class="mn">jle</td><td class="m dimtd">jng</td><td class="dimtd"><b style="color:var(--w64)">signed</b> ≤</td><td class="m dimtd">ZF = 1 or SF ≠ OF</td></tr>
+        <tr><td class="mn">ja</td><td class="m dimtd">jnbe</td><td class="dimtd"><b style="color:var(--w32)">unsigned</b> &gt;</td><td class="m dimtd">CF = 0 and ZF = 0</td></tr>
+        <tr><td class="mn">jae</td><td class="m dimtd">jnb, jnc</td><td class="dimtd"><b style="color:var(--w32)">unsigned</b> ≥</td><td class="m dimtd">CF = 0</td></tr>
+        <tr><td class="mn">jb</td><td class="m dimtd">jnae, jc</td><td class="dimtd"><b style="color:var(--w32)">unsigned</b> &lt;</td><td class="m dimtd">CF = 1</td></tr>
+        <tr><td class="mn">jbe</td><td class="m dimtd">jna</td><td class="dimtd"><b style="color:var(--w32)">unsigned</b> ≤</td><td class="m dimtd">CF = 1 or ZF = 1</td></tr>
+        <tr><td class="mn">js</td><td class="m dimtd">—</td><td class="dimtd">negative</td><td class="m dimtd">SF = 1</td></tr>
+        <tr><td class="mn">jns</td><td class="m dimtd">—</td><td class="dimtd">non-negative</td><td class="m dimtd">SF = 0</td></tr>
+        <tr><td class="mn">jo / jno</td><td class="m dimtd">—</td><td class="dimtd">signed overflow / not</td><td class="m dimtd">OF = 1 / 0</td></tr>
+        <tr><td class="mn">jp</td><td class="m dimtd">jpe</td><td class="dimtd">parity even — used to detect NaN after <code>ucomisd</code></td><td class="m dimtd">PF = 1</td></tr>
+        <tr><td class="mn">jnp</td><td class="m dimtd">jpo</td><td class="dimtd">parity odd</td><td class="m dimtd">PF = 0</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:13px;color:var(--dim);margin-top:12px">The same suffixes attach to <code>set</code> (<code>setg al</code>) and <code>cmov</code> (<code>cmovle rax, rbx</code>).</p>
+</section>
+
+<!-- ================= SYSCALLS ================= -->
+<section id="syscalls">
+  <p class="eyebrow">Talking to the kernel</p>
+  <h2>Linux system calls &amp; a working skeleton</h2>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>The syscall convention</h4>
+      <p>Different from the function ABI in one place: <b>arg 4 is <code>r10</code>, not <code>rcx</code></b>, because the <code>syscall</code> instruction overwrites <code>rcx</code> with the return address.</p>
+      <div class="tbox" style="margin-top:12px">
+        <table style="min-width:0">
+          <thead><tr><th>Slot</th><th>Register</th></tr></thead>
+          <tbody>
+            <tr><td class="dimtd">call number</td><td class="t64">rax</td></tr>
+            <tr><td class="dimtd">arg 1</td><td class="t64">rdi</td></tr>
+            <tr><td class="dimtd">arg 2</td><td class="t64">rsi</td></tr>
+            <tr><td class="dimtd">arg 3</td><td class="t64">rdx</td></tr>
+            <tr><td class="dimtd">arg 4</td><td class="t64">r10</td></tr>
+            <tr><td class="dimtd">arg 5</td><td class="t64">r8</td></tr>
+            <tr><td class="dimtd">arg 6</td><td class="t64">r9</td></tr>
+            <tr><td class="dimtd">return</td><td class="t64">rax</td></tr>
+            <tr><td class="dimtd">destroyed</td><td class="t64">rcx, r11</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px">Errors come back as a small negative number in <code>rax</code> (e.g. <code>-2</code> = <code>ENOENT</code>), not via <code>errno</code>.</p>
+    </div>
+    <div>
+      <div class="tbox">
+        <table>
+          <thead><tr><th>#</th><th>Name</th><th>Arguments</th></tr></thead>
+          <tbody>
+            <tr><td class="t64">0</td><td class="mn">read</td><td class="dimtd">fd, buf, count</td></tr>
+            <tr><td class="t64">1</td><td class="mn">write</td><td class="dimtd">fd, buf, count</td></tr>
+            <tr><td class="t64">2</td><td class="mn">open</td><td class="dimtd">path, flags, mode</td></tr>
+            <tr><td class="t64">3</td><td class="mn">close</td><td class="dimtd">fd</td></tr>
+            <tr><td class="t64">9</td><td class="mn">mmap</td><td class="dimtd">addr, len, prot, flags, fd, off</td></tr>
+            <tr><td class="t64">10</td><td class="mn">mprotect</td><td class="dimtd">addr, len, prot</td></tr>
+            <tr><td class="t64">11</td><td class="mn">munmap</td><td class="dimtd">addr, len</td></tr>
+            <tr><td class="t64">12</td><td class="mn">brk</td><td class="dimtd">addr</td></tr>
+            <tr><td class="t64">35</td><td class="mn">nanosleep</td><td class="dimtd">req, rem</td></tr>
+            <tr><td class="t64">57</td><td class="mn">fork</td><td class="dimtd">—</td></tr>
+            <tr><td class="t64">59</td><td class="mn">execve</td><td class="dimtd">path, argv, envp</td></tr>
+            <tr><td class="t64">60</td><td class="mn">exit</td><td class="dimtd">status</td></tr>
+            <tr><td class="t64">231</td><td class="mn">exit_group</td><td class="dimtd">status</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:12.5px;color:var(--dimmer);margin-top:10px;font-family:var(--mono)">Full table: /usr/include/asm/unistd_64.h</p>
+    </div>
+  </div>
+
+  <h3>Two skeletons worth memorising</h3>
+  <div class="grid2">
+    <div class="card">
+      <h4>Freestanding — no libc</h4>
+<pre><span class="lb">section</span> .data
+    msg <span class="op">db</span> "Hello, world", 10
+    len <span class="op">equ</span> $ - msg
+
+<span class="lb">section</span> .text
+    <span class="lb">global</span> _start
+_start:
+    <span class="op">mov</span> <span class="rg">rax</span>, 1          <span class="cm">; write</span>
+    <span class="op">mov</span> <span class="rg">rdi</span>, 1          <span class="cm">; fd = stdout</span>
+    <span class="op">lea</span> <span class="rg">rsi</span>, [<span class="lb">rel</span> msg] <span class="cm">; buf</span>
+    <span class="op">mov</span> <span class="rg">rdx</span>, len        <span class="cm">; count</span>
+    <span class="op">syscall</span>
+
+    <span class="op">mov</span> <span class="rg">rax</span>, 60         <span class="cm">; exit</span>
+    <span class="op">xor</span> <span class="rg">edi</span>, <span class="rg">edi</span>        <span class="cm">; status = 0</span>
+    <span class="op">syscall</span>
+
+<span class="cm">; nasm -f elf64 a.asm && ld a.o -o a</span></pre>
+    </div>
+    <div class="card">
+      <h4>Linked against libc — a real frame</h4>
+<pre><span class="lb">section</span> .text
+    <span class="lb">global</span> main
+    <span class="lb">extern</span> printf
+
+main:
+    <span class="op">push</span> <span class="rg">rbp</span>            <span class="cm">; rsp%16: 8 -&gt; 0</span>
+    <span class="op">mov</span>  <span class="rg">rbp</span>, <span class="rg">rsp</span>
+    <span class="op">sub</span>  <span class="rg">rsp</span>, 16        <span class="cm">; locals, stays aligned</span>
+
+    <span class="op">mov</span>  <span class="rg">qword</span> [<span class="rg">rbp</span>-8], 42
+
+    <span class="op">lea</span>  <span class="rg">rdi</span>, [<span class="lb">rel</span> fmt]
+    <span class="op">mov</span>  <span class="rg">rsi</span>, [<span class="rg">rbp</span>-8]
+    <span class="op">xor</span>  <span class="rg">eax</span>, <span class="rg">eax</span>       <span class="cm">; 0 vector args</span>
+    <span class="op">call</span> printf <span class="lb">wrt</span> ..plt
+
+    <span class="op">xor</span>  <span class="rg">eax</span>, <span class="rg">eax</span>       <span class="cm">; return 0</span>
+    <span class="op">leave</span>
+    <span class="op">ret</span>
+
+<span class="lb">section</span> .rodata
+    fmt <span class="op">db</span> "value = %ld", 10, 0
+
+<span class="cm">; nasm -f elf64 a.asm && gcc a.o -o a -no-pie</span></pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div>x86-64 · Intel syntax · NASM — study sheet. Verify anything surprising against the Intel SDM Vol. 2 or the System V AMD64 ABI document.</div>
+</footer>
+
+</div><!-- /wrap -->
+
+<script>
+/* ---------------- register decomposition ---------------- */
+var REGS = [
+  {q:'rax',d:'eax',w:'ax',l:'al',h:'ah',
+   note:'The classic four. <b>ah</b> is bits 15:8 — a second, separate byte handle on the same register, and the only place a high byte is addressable.'},
+  {q:'rbx',d:'ebx',w:'bx',l:'bl',h:'bh',
+   note:'Callee-saved in both ABIs — push it before you use it, pop it before you return.'},
+  {q:'rcx',d:'ecx',w:'cx',l:'cl',h:'ch',
+   note:'<b>cl</b> is the only register a variable shift count can come from: <code>shl rax, cl</code>.'},
+  {q:'rdx',d:'edx',w:'dx',l:'dl',h:'dh',
+   note:'Holds the high 64 bits of a <code>mul</code> result and the remainder after <code>div</code>.'},
+  {q:'rsi',d:'esi',w:'si',l:'sil',h:null,
+   note:'No high byte exists. <b>sil</b> only became addressable in 64-bit mode, and using it forces a REX prefix — so it can never appear alongside <code>ah</code>.'},
+  {q:'rdi',d:'edi',w:'di',l:'dil',h:null,
+   note:'Argument 1 on Linux; callee-saved on Windows. Same register, opposite rules.'},
+  {q:'rbp',d:'ebp',w:'bp',l:'bpl',h:null,
+   note:'Frame pointer by convention, not by hardware. Free to use as a general register if you index locals from <code>rsp</code> instead.'},
+  {q:'rsp',d:'esp',w:'sp',l:'spl',h:null,
+   note:'The stack pointer. The narrow forms are legal to encode but effectively never used — treat <code>rsp</code> as 64-bit only.'},
+  {q:'r8', d:'r8d', w:'r8w', l:'r8b', h:null,
+   note:'The new registers use suffixes instead of new names: <b>d</b>word, <b>w</b>ord, <b>b</b>yte. <code>r8l</code> is accepted as a synonym for <code>r8b</code>.'},
+  {q:'r9', d:'r9d', w:'r9w', l:'r9b', h:null, note:'Argument 6 on Linux, argument 4 on Windows.'},
+  {q:'r10',d:'r10d',w:'r10w',l:'r10b',h:null,note:'Carries argument 4 of a Linux <code>syscall</code>, because <code>syscall</code> destroys <code>rcx</code>.'},
+  {q:'r11',d:'r11d',w:'r11w',l:'r11b',h:null,note:'Scratch. Also destroyed by <code>syscall</code> — it receives the saved RFLAGS.'},
+  {q:'r12',d:'r12d',w:'r12w',l:'r12b',h:null,note:'Callee-saved. Good home for a value that must survive calls inside a loop.'},
+  {q:'r13',d:'r13d',w:'r13w',l:'r13b',h:null,note:'Callee-saved.'},
+  {q:'r14',d:'r14d',w:'r14w',l:'r14b',h:null,note:'Callee-saved.'},
+  {q:'r15',d:'r15d',w:'r15w',l:'r15b',h:null,note:'Callee-saved.'}
+];
+
+var chips = document.getElementById('chips');
+var bars  = document.getElementById('bars');
+var rnote = document.getElementById('regnote');
+
+REGS.forEach(function(r,i){
+  var b = document.createElement('button');
+  b.className = 'chip';
+  b.type = 'button';
+  b.textContent = r.q;
+  b.setAttribute('aria-pressed', i === 0 ? 'true' : 'false');
+  b.addEventListener('click', function(){ select(i); });
+  chips.appendChild(b);
+});
+
+function cell(cls, span, name, label){
+  return '<div class="cell ' + cls + '" style="grid-column:span ' + span + '">' +
+         name + '<small>' + label + '</small></div>';
+}
+
+function select(i){
+  var r = REGS[i];
+  Array.prototype.forEach.call(chips.children, function(c, n){
+    c.setAttribute('aria-pressed', n === i ? 'true' : 'false');
+  });
+
+  var html = '';
+  html += '<div class="brow">' + cell('c64', 8, r.q, '64 bits') + '</div>';
+  html += '<div class="brow"><div class="ghost" style="grid-column:span 4"></div>' +
+          cell('c32', 4, r.d, '32 bits · zero-extends') + '</div>';
+  html += '<div class="brow"><div class="ghost" style="grid-column:span 6"></div>' +
+          cell('c16', 2, r.w, '16 bits') + '</div>';
+  html += '<div class="brow"><div class="ghost" style="grid-column:span 6"></div>' +
+          (r.h ? cell('c8h', 1, r.h, 'bits 15:8')
+               : '<div class="cell cnone" style="grid-column:span 1">n/a<small>no high byte</small></div>') +
+          cell('c8l', 1, r.l, 'bits 7:0') + '</div>';
+
+  bars.innerHTML = html;
+  rnote.innerHTML = r.note;
+}
+select(0);
+
+/* ---------------- instruction filter ---------------- */
+var q     = document.getElementById('q');
+var cnt   = document.getElementById('cnt');
+var nores = document.getElementById('nores');
+var rows  = Array.prototype.slice.call(document.querySelectorAll('#itables tbody tr'));
+var blocks = Array.prototype.slice.call(document.querySelectorAll('#itables [data-group]'));
+
+rows.forEach(function(r){ r.dataset.text = r.textContent.toLowerCase(); });
+
+function filter(){
+  var term = q.value.trim().toLowerCase();
+  var shown = 0;
+
+  rows.forEach(function(r){
+    var hit = !term || r.dataset.text.indexOf(term) !== -1;
+    r.style.display = hit ? '' : 'none';
+    if (hit) shown++;
+  });
+
+  /* hide a heading + table pair when the table has nothing left */
+  for (var i = 0; i < blocks.length; i += 2){
+    var head = blocks[i], box = blocks[i+1];
+    var any = Array.prototype.some.call(box.querySelectorAll('tbody tr'), function(r){
+      return r.style.display !== 'none';
+    });
+    head.style.display = any ? '' : 'none';
+    box.style.display  = any ? '' : 'none';
+  }
+
+  cnt.textContent = shown + ' / ' + rows.length;
+  nores.style.display = shown ? 'none' : 'block';
+}
+q.addEventListener('input', filter);
+filter();
+
+/* ---------------- rsp calculator ---------------- */
+var abi = document.getElementById('abi'),
+    locals = document.getElementById('locals'),
+    pushes = document.getElementById('pushes'),
+    maxargs = document.getElementById('maxargs'),
+    leaf = document.getElementById('leaf'),
+    breakdown = document.getElementById('breakdown'),
+    calccode = document.getElementById('calccode'),
+    calcwarn = document.getElementById('calcwarn');
+
+function num(el, lo, hi){
+  var v = parseInt(el.value, 10);
+  if (isNaN(v) || v < lo) v = lo;
+  if (v > hi) v = hi;
+  return v;
+}
+
+function row(k, v){ return '<li><span>' + k + '</span><span>' + v + '</span></li>'; }
+
+function calc(){
+  var win   = abi.value === 'win',
+      isLeaf = leaf.checked,
+      loc   = num(locals, 0, 100000),
+      push  = num(pushes, 0, 6),
+      args  = num(maxargs, 0, 16);
+
+  maxargs.disabled = isLeaf;
+  maxargs.style.opacity = isLeaf ? .4 : 1;
+
+  var locAligned = Math.ceil(loc / 8) * 8;
+  var regArgs    = win ? 4 : 6;
+  var shadow     = (win && !isLeaf) ? 32 : 0;
+  var stackArgs  = isLeaf ? 0 : Math.max(0, args - regArgs) * 8;
+
+  var base = locAligned + shadow + stackArgs;
+
+  /* on entry rsp%16 == 8; each push removes 8; N must bring it back to 0 */
+  var afterPush = (8 + 8 * push) % 16;
+  var pad = (16 - ((base + afterPush) % 16)) % 16;
+  var N = base + pad;
+
+  var items = '';
+  items += row('locals, rounded up to 8', locAligned + ' B');
+  if (win) items += row(isLeaf ? 'shadow space (leaf — none needed)' : 'shadow space (Windows, always)', shadow + ' B');
+  items += row(isLeaf ? 'outgoing stack args (leaf — none)' : 'outgoing stack args (' + args + ' args, ' + regArgs + ' in registers)', stackArgs + ' B');
+  items += row('alignment padding (' + push + ' push' + (push === 1 ? '' : 'es') + ' → N must be ≡ ' + afterPush + ' mod 16)', pad + ' B');
+  items += row('sub rsp,', N + ' B');
+  breakdown.innerHTML = items;
+
+  var warn = '';
+  if (!win && isLeaf && locAligned <= 128 && stackArgs === 0){
+    warn = 'Leaf function on System V: these ' + locAligned + ' bytes fit in the 128-byte red zone. ' +
+           'You may skip <code>sub rsp</code> entirely and address locals as <code>[rsp-8]</code>, <code>[rsp-16]</code>…';
+  } else if (win && isLeaf){
+    warn = 'A leaf function needs no shadow space. The moment you add a <code>call</code>, 32 bytes appear in this total.';
+  } else if (N === 0){
+    warn = 'Nothing to reserve — the stack is already aligned and you have no locals.';
+  }
+  calcwarn.innerHTML = warn ? '<div class="warn">' + warn + '</div>' : '';
+
+  var save = ['rbx','r12','r13','r14','r15','rdi'];
+  var pro = '<span class="cm">; prologue</span>\n';
+  pro += '<span class="op">push</span> <span class="rg">rbp</span>\n';
+  pro += '<span class="op">mov</span>  <span class="rg">rbp</span>, <span class="rg">rsp</span>\n';
+  for (var i = 0; i < push - 1; i++){
+    pro += '<span class="op">push</span> <span class="rg">' + save[i] + '</span>\n';
+  }
+  if (push === 0){
+    pro = '<span class="cm">; prologue (no frame pointer)</span>\n';
+  }
+  if (N > 0) pro += '<span class="op">sub</span>  <span class="rg">rsp</span>, ' + N + '\n';
+
+  var epi = '\n<span class="cm">; epilogue</span>\n';
+  if (N > 0) epi += '<span class="op">add</span>  <span class="rg">rsp</span>, ' + N + '\n';
+  for (var j = push - 2; j >= 0; j--){
+    epi += '<span class="op">pop</span>  <span class="rg">' + save[j] + '</span>\n';
+  }
+  if (push >= 1) epi += '<span class="op">pop</span>  <span class="rg">rbp</span>\n';
+  epi += '<span class="op">ret</span>';
+
+  var check = '\n<span class="cm">; rsp % 16 at the next call: 0  ✓</span>';
+  calccode.innerHTML = pro + epi + check;
+}
+
+[abi, locals, pushes, maxargs].forEach(function(el){
+  el.addEventListener('input', calc);
+  el.addEventListener('change', calc);
+});
+leaf.addEventListener('change', calc);
+calc();
+</script>
+</body>
+</html>
